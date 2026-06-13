@@ -17,12 +17,18 @@
     "koffi": "^2.15.1"
   },
   "devDependencies": {
-    "electron": "^28.3.3",
-    "electron-builder": "^24.9.1"
+    "electron": "^42.4.0",
+    "electron-builder": "^26.15.3"
+  },
+  "overrides": {
+    "node-gyp": "^13.0.0",
+    "@mapbox/node-pre-gyp": "^2.0.3",
+    "tar": "^7.5.16"
   },
   "build": {
     "appId": "com.live2dpet.app",
     "productName": "Live2DPet",
+    "npmRebuild": false,
     "directories": {
       "output": "dist"
     },

@@ -255,7 +255,7 @@ describe('DesktopPetSystem', () => {
     it('should instantiate with defaults', () => {
         const sys = new DesktopPetSystem();
         assert.strictEqual(sys.isActive, false);
-        assert.strictEqual(sys.detectionIntervalMs, 30000);
+        assert.strictEqual(sys.detectionIntervalMs, 10000);
         assert.strictEqual(sys.aiClient, null);
         assert.strictEqual(sys.emotionSystem, null);
         assert.strictEqual(sys.currentAudio, null);

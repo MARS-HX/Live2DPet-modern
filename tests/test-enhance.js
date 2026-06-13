@@ -447,7 +447,7 @@ describe('KnowledgeStore', () => {
 
 // ========== Test: EnhancementOrchestrator ==========
 
-describe('EnhancementOrchestrator', () => {
+describe('EnhancementOrchestrator', { skip: 'v2.0 停用文本流水线,对应实现见 enhancement-orchestrator.js 注释块,重启该功能时一并恢复' }, () => {
     let EnhancementOrchestrator, ShortTermPool, LongTermPool, MemoryTracker, SearchService, KnowledgeStore, VLMExtractor;
 
     beforeEach(() => {
@@ -775,7 +775,7 @@ describe('VLMExtractor', () => {
         assert.ok(!vlm.situationMap['Test'].situation.includes('Old'));
     });
 
-    it('maybeExtract includes previous situation in API call', async () => {
+    it('maybeExtract sends window title, background context and image in API call', async () => {
         const sp = new ShortTermPool();
         const lp = new LongTermPool();
         let capturedMessages = null;
@@ -784,10 +784,11 @@ describe('VLMExtractor', () => {
         vlm.enabled = true;
         vlm.minFocusSeconds = 0;
         sp.set('memory.today', { 'Test': 30 });
-        vlm.situationMap['Test'] = { situation: 'Previous context here', timestamp: Date.now() - 60000, focusSec: 20 };
-        await vlm.maybeExtract('Test', 'base64data', '');
-        const userContent = capturedMessages[1].content[0].text;
-        assert.ok(userContent.includes('Previous (AI-generated, may contain errors): Previous context here'));
+        await vlm.maybeExtract('Test', 'base64data', 'Recent activity summary');
+        const userContent = capturedMessages[1].content;
+        // v2.0 关键帧模式:用户消息只含窗口标题、背景上下文与截图,不再注入历史 situation
+        assert.strictEqual(userContent[0].text, 'Window: Test\nBackground:\nRecent activity summary');
+        assert.ok(userContent[1].image_url.url.includes('base64data'));
     });
 
     it('getSituation returns from short-term map', () => {
@@ -900,22 +901,16 @@ describe('VLMExtractor', () => {
     it('pushScreenshot cascades overflow from L0 to L1 to L2', async () => {
         const vlm = new VLMExtractor(new ShortTermPool(), new LongTermPool(), null);
         vlm.startCapture();
-        // L0 maxSize=2, push 3 → overflow 1 to L1
+        // 每级 maxSize=1:推入 3 张后逐级溢出,最新一张留在 L0,最旧的级联到 L2
         await vlm.pushScreenshot('img1', 'T1');
         await vlm.pushScreenshot('img2', 'T2');
         await vlm.pushScreenshot('img3', 'T3');
-        assert.strictEqual(vlm._mipmapLevels[0].entries.length, 2);
+        assert.strictEqual(vlm._mipmapLevels[0].entries.length, 1);
         assert.strictEqual(vlm._mipmapLevels[1].entries.length, 1);
-        // Push 2 more → L0 overflows again, L1 now has 2
-        await vlm.pushScreenshot('img4', 'T4');
-        await vlm.pushScreenshot('img5', 'T5');
-        assert.strictEqual(vlm._mipmapLevels[0].entries.length, 2);
-        assert.strictEqual(vlm._mipmapLevels[1].entries.length, 2);
-        // Push 2 more → L0 overflows, L1 overflows to L2
-        await vlm.pushScreenshot('img6', 'T6');
-        await vlm.pushScreenshot('img7', 'T7');
         assert.strictEqual(vlm._mipmapLevels[2].entries.length, 1);
-        assert.strictEqual(vlm.getBufferSize(), 5); // 2+2+1
+        assert.strictEqual(vlm.getBufferSize(), 3); // 1+1+1
+        assert.strictEqual(vlm._mipmapLevels[0].entries[0].title, 'T3');
+        assert.strictEqual(vlm._mipmapLevels[2].entries[0].title, 'T1');
     });
 
     it('pushScreenshot does nothing when capture inactive', async () => {
@@ -1258,7 +1253,7 @@ describe('enhance-utils edge cases', () => {
 
 // ========== Test: _gatherLongTermContext ==========
 
-describe('_gatherLongTermContext', () => {
+describe('_gatherLongTermContext', { skip: 'v2.0 停用文本流水线,对应实现见 enhancement-orchestrator.js 注释块,重启该功能时一并恢复' }, () => {
     let EnhancementOrchestrator;
 
     beforeEach(() => {
@@ -1735,7 +1730,7 @@ describe('PetPromptBuilder', () => {
 
 // ========== Test: buildEnhancedContext timestamp formatting ==========
 
-describe('buildEnhancedContext timestamp formatting', () => {
+describe('buildEnhancedContext timestamp formatting', { skip: 'v2.0 停用文本流水线,对应实现见 enhancement-orchestrator.js 注释块,重启该功能时一并恢复' }, () => {
     let EnhancementOrchestrator;
 
     beforeEach(() => {

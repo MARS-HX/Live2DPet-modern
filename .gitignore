@@ -3,5 +3,8 @@ dist/
 *.log
 .claude/
 voicevox_core/
+archive/
+manyread/short/
+manyread/user/
 nul
 build.bat
