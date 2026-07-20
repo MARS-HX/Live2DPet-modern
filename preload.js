@@ -71,6 +71,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ttsSynthesize: (text) => ipcRenderer.invoke('tts-synthesize', text),
     ttsGetStatus: () => ipcRenderer.invoke('tts-get-status'),
     ttsRestart: () => ipcRenderer.invoke('tts-restart'),
+    ttsDiagnose: () => ipcRenderer.invoke('tts-diagnose'),
     appRelaunch: () => ipcRenderer.invoke('app-relaunch'),
     ttsSetConfig: (config) => ipcRenderer.invoke('tts-set-config', config),
     ttsGetMetas: () => ipcRenderer.invoke('tts-get-metas'),
@@ -83,7 +84,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
     generateDefaultAudio: (phrases, styleId) => ipcRenderer.invoke('generate-default-audio', phrases, styleId),
     loadDefaultAudio: () => ipcRenderer.invoke('load-default-audio'),
 
-    // Event listeners
+    // ========== 语音识别 (ASR) - 云端/旧版 ==========
+    TRANSCRIBE_AUDIO: (audioBuffer, mimeType) => ipcRenderer.invoke('TRANSCRIBE_AUDIO', audioBuffer, mimeType),
+
+    // ========== 本地 STT (Vosk 离线识别) ==========
+    // 初始化本地 STT 服务（加载模型）
+    sttInitialize: () => ipcRenderer.invoke('stt:initialize'),
+    // 开始识别（清空缓存）
+    sttStart: () => ipcRenderer.invoke('stt:start'),
+    // 停止识别
+    sttStop: () => ipcRenderer.invoke('stt:stop'),
+    // 发送音频 PCM 数据 (Int16Array 的 buffer)
+    sttFeedAudio: (pcmBuffer) => ipcRenderer.send('stt:feed-audio', pcmBuffer),
+    // 监听识别结果
+    onSttResult: (cb) => ipcRenderer.on('stt:result', (event, text) => cb(text)),
+    // 监听状态变化（如 'listening' / 'stopped'）
+    onSttStatus: (cb) => ipcRenderer.on('stt:status', (event, status) => cb(status)),
+
+    // Event listeners (原有)
     onCharacterUpdate: (cb) => ipcRenderer.on('character-update', (e, data) => cb(data)),
     onPetWindowClosed: (cb) => ipcRenderer.on('pet-window-closed', () => cb()),
     onChatBubbleMessage: (cb) => ipcRenderer.on('chat-bubble-message', (e, data) => cb(data)),

@@ -52,6 +52,154 @@
         }
         .ctrl-btn:hover { background: rgba(255,255,255,1); }
         .ctrl-btn:disabled { opacity: 0.3; cursor: default; }
+
+        /* ===== 聊天框样式 ===== */
+        #chat-overlay {
+            position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
+            width: 260px; z-index: 200;
+            display: none; flex-direction: column;
+            -webkit-app-region: no-drag;
+            font-family: 'Microsoft YaHei', sans-serif;
+        }
+        #chat-overlay.show { display: flex; }
+        #chat-messages {
+            background: rgba(255,255,255,0.92);
+            border-radius: 10px 10px 0 0;
+            padding: 8px; max-height: 150px; overflow-y: auto;
+            font-size: 12px; line-height: 1.5;
+            border: 1px solid rgba(0,0,0,0.1);
+            border-bottom: none;
+        }
+        #chat-messages .msg { margin: 2px 0; word-break: break-all; }
+        #chat-messages .msg.user { color: #333; text-align: right; }
+        #chat-messages .msg.ai { color: #e75480; text-align: left; }
+        #chat-input-row {
+            display: flex; gap: 2px;
+            background: rgba(255,255,255,0.95);
+            border-radius: 0 0 10px 10px;
+            padding: 4px 6px;
+            border: 1px solid rgba(0,0,0,0.1);
+        }
+        #chat-input {
+            flex: 1; border: 1px solid #ddd; border-radius: 12px;
+            padding: 4px 10px; font-size: 12px; outline: none;
+            -webkit-app-region: no-drag;
+        }
+        #chat-input:focus { border-color: #e75480; }
+        .chat-btn {
+            border: none; border-radius: 50%;
+            width: 26px; height: 26px;
+            cursor: pointer; font-size: 14px;
+            display: flex; align-items: center; justify-content: center;
+            -webkit-app-region: no-drag;
+            transition: background 0.2s;
+        }
+        #btn-send { background: #e75480; color: white; }
+        #btn-send:hover { background: #d4446a; }
+        #btn-mic {
+            background: rgba(255,255,255,0.8); color: #555;
+            border: 1px solid #ddd;
+        }
+        #btn-mic:hover { background: rgba(255,255,255,1); }
+        #btn-mic.listening { background: #ff4444; color: white; border-color: #ff4444; animation: pulse 1s infinite; }
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+        #btn-chat-toggle {
+            background: rgba(255,255,255,0.8); color: #555;
+            border: 1px solid #ddd;
+        }
+        #btn-chat-toggle:hover { background: rgba(255,255,255,1); }
+        #btn-chat-toggle.active { background: #e75480; color: white; border-color: #e75480; }
+        .chat-time {
+            font-size: 10px; color: #999; text-align: center;
+            padding: 2px 0;
+        }
+        /* ===== 打字指示器 ===== */
+        #typing-indicator {
+            display: none;
+            font-size: 11px;
+            color: #e75480;
+            padding: 2px 8px;
+            text-align: left;
+            animation: typingPulse 1.2s ease-in-out infinite;
+        }
+        #typing-indicator.show { display: block; }
+        @keyframes typingPulse {
+            0%, 100% { opacity: 0.5; }
+            50% { opacity: 1; }
+        }
+
+        /* ===== 语音VAD电平指示 ===== */
+        #vad-indicator {
+            display: none;
+            position: absolute;
+            bottom: 42px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 120px;
+            height: 4px;
+            background: rgba(0,0,0,0.1);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        #vad-indicator.show { display: block; }
+        #vad-level {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #4caf50, #ff9800, #f44336);
+            border-radius: 2px;
+            transition: width 0.1s;
+        }
+
+        /* ===== 快捷回复 ===== */
+        #quick-replies {
+            display: none;
+            gap: 4px;
+            padding: 4px 6px;
+            flex-wrap: wrap;
+            background: rgba(255,255,255,0.9);
+            border-top: 1px solid rgba(0,0,0,0.05);
+        }
+        #quick-replies.show { display: flex; }
+        .quick-reply-btn {
+            font-size: 11px;
+            padding: 3px 10px;
+            border: 1px solid #ddd;
+            border-radius: 12px;
+            background: white;
+            color: #666;
+            cursor: pointer;
+            transition: all 0.2s;
+            -webkit-app-region: no-drag;
+        }
+        .quick-reply-btn:hover {
+            background: #fce4ec;
+            border-color: #e75480;
+            color: #e75480;
+        }
+
+        /* ===== 录音时长 ===== */
+        #recording-time {
+            display: none;
+            font-size: 10px;
+            color: #ff4444;
+            text-align: center;
+            padding: 2px 0;
+        }
+        #recording-time.show { display: block; }
+
+        /* ===== 消息时间戳 ===== */
+        .msg-time {
+            font-size: 9px;
+            color: #bbb;
+            display: block;
+            margin-top: -1px;
+        }
+        .msg.user .msg-time { text-align: right; }
+        .msg.ai .msg-time { text-align: left; }
     </style>
 </head>
 <body>
@@ -62,8 +210,22 @@
         <div class="controls">
             <button class="ctrl-btn" id="btn-smaller" title="Smaller">−</button>
             <button class="ctrl-btn" id="btn-bigger" title="Bigger">+</button>
+            <button class="ctrl-btn" id="btn-chat-toggle" title="Chat">💬</button>
             <button class="ctrl-btn" id="btn-settings" title="Settings">⚙</button>
             <button class="ctrl-btn" id="btn-close" title="Close">✕</button>
+        </div>
+        <!-- 聊天框 -->
+        <div id="chat-overlay">
+            <div id="chat-messages"></div>
+            <div id="typing-indicator">💭 正在输入...</div>
+            <div id="vad-indicator"><div id="vad-level"></div></div>
+            <div id="recording-time">🎤 录音中 <span id="rec-sec">0</span>s</div>
+            <div id="quick-replies"></div>
+            <div id="chat-input-row">
+                <input id="chat-input" type="text" placeholder="说点什么... (Enter发送)" maxlength="500">
+                <button class="chat-btn" id="btn-mic" title="语音输入（按住说话）">🎤</button>
+                <button class="chat-btn" id="btn-send" title="发送">➤</button>
+            </div>
         </div>
     </div>
 
@@ -83,6 +245,8 @@
             }
         }
     </script>
+    <script src="src/core/ai-chat.js"></script>
+    <script src="src/core/conversation-store.js"></script>
     <script src="src/renderer/model-adapter.js"></script>
     <script>
         const sizePresets = [200, 300, 400, 500];
@@ -357,6 +521,520 @@
                 return 'body';
             }
         })();
+
+        // ========== 聊天系统（增强版） ==========
+        let chatStore = null;
+        let isRecording = false;
+        let recordingStartTime = 0;
+        let recTimer = null;
+        let vadAnalyser = null;
+        let vadAnimationId = null;
+
+        async function initChat() {
+            if (typeof ConversationStore === 'undefined') {
+                console.warn('[Chat] ConversationStore not loaded');
+                return;
+            }
+            chatStore = new ConversationStore();
+            await chatStore.load();
+            window.__chatStore = chatStore;
+
+            // 启动主动回忆
+            chatStore.startRecall(async (memory) => {
+                // 收到主动回忆时，显示在聊天框
+                if (memory && memory.text) {
+                    appendMessage('ai', '💭 ' + memory.text + ' (回忆)');
+                    if (chatStore) await chatStore.add('assistant', memory.text);
+                }
+            });
+
+            console.log('[Chat] Store loaded:', chatStore.getStats());
+        }
+
+        // ===== 聊天框显示切换 =====
+        document.getElementById('btn-chat-toggle').addEventListener('click', () => {
+            const overlay = document.getElementById('chat-overlay');
+            const btn = document.getElementById('btn-chat-toggle');
+            overlay.classList.toggle('show');
+            btn.classList.toggle('active');
+            if (overlay.classList.contains('show')) {
+                document.getElementById('chat-input').focus();
+                scrollChat();
+                showQuickReplies();
+            }
+        });
+
+        // ===== 快捷回复 =====
+        const QUICK_REPLIES = ['你好呀', '你在干嘛', '好无聊', '讲个笑话', '今天天气', '我饿了', '晚安', '早安'];
+        let quickReplyIndex = 0;
+
+        function showQuickReplies() {
+            const container = document.getElementById('quick-replies');
+            if (!container) return;
+            container.innerHTML = '';
+            // 随机选4个
+            const shuffled = [...QUICK_REPLIES].sort(() => Math.random() - 0.5).slice(0, 4);
+            shuffled.forEach(text => {
+                const btn = document.createElement('button');
+                btn.className = 'quick-reply-btn';
+                btn.textContent = text;
+                btn.addEventListener('click', () => {
+                    sendChatMessage(text);
+                    container.classList.remove('show');
+                });
+                container.appendChild(btn);
+            });
+            container.classList.add('show');
+        }
+
+        // ===== 发送消息（增强版） =====
+        let chatAiClient = null;
+
+        async function sendChatMessage(text) {
+            if (!text || !text.trim()) return;
+            const msg = text.trim();
+            document.getElementById('chat-input').value = '';
+            document.getElementById('quick-replies').classList.remove('show');
+
+            // 显示用户消息（带时间戳）
+            appendMessage('user', msg);
+            if (chatStore) await chatStore.add('user', msg);
+
+            // 显示"正在输入"
+            showTyping(true);
+
+            try {
+                // 初始化 AI 客户端（懒加载）
+                if (!chatAiClient) {
+                    chatAiClient = new AIChatClient();
+                    await chatAiClient.init();
+                    window.__chatAiClient = chatAiClient; // 供记忆模块使用
+                }
+
+                // ===== 构建增强长期记忆上下文 =====
+                let memoryContext = '';
+                if (chatStore) {
+                    // 使用增强版上下文（含总结+话题+偏好）
+                    const enhanced = chatStore.getEnhancedContext(5);
+                    if (enhanced) {
+                        memoryContext = '\n\n[长期记忆]\n' + enhanced;
+                    }
+                }
+
+                // 获取当前窗口信息
+                let windowInfo = '桌面';
+                try {
+                    const winResult = await window.electronAPI.getActiveWindow();
+                    if (winResult?.success && winResult.data?.title) {
+                        windowInfo = winResult.data.title;
+                    }
+                } catch (e) {}
+
+                const msgs = [
+                    {
+                        role: 'system',
+                        content: `你是一个可爱的桌面宠物「门猫猫」，用活泼简短的方式回答，像朋友一样，每次1-2句话。当前在看「${windowInfo}」。${memoryContext}`
+                    },
+                    { role: 'user', content: msg }
+                ];
+
+                const reply = await chatAiClient.callAPI(msgs);
+                showTyping(false);
+                appendMessage('ai', reply);
+                if (chatStore) await chatStore.add('assistant', reply);
+
+                // 尝试播放语音
+                if (window.electronAPI?.ttsSynthesize) {
+                    try {
+                        const ttsResult = await window.electronAPI.ttsSynthesize(reply);
+                        if (ttsResult?.success && ttsResult.wav) {
+                            const audio = new Audio('data:audio/wav;base64,' + ttsResult.wav);
+                            audio.play().catch(() => {});
+                        }
+                    } catch (e) {}
+                }
+
+                // 回复后重新显示快捷回复
+                setTimeout(showQuickReplies, 1000);
+            } catch (e) {
+                showTyping(false);
+                appendMessage('ai', '😅 哎呀，我走神了... ' + e.message);
+            }
+        }
+
+        // ===== 打字指示器 =====
+        function showTyping(show) {
+            const el = document.getElementById('typing-indicator');
+            if (el) el.classList.toggle('show', show);
+        }
+
+        // ===== 提供给 petSystem 的回调 =====
+        window.__onChatReply = async function(text) {
+            showTyping(false);
+            appendMessage('ai', text);
+            if (chatStore) await chatStore.add('assistant', text);
+        };
+
+        document.getElementById('btn-send').addEventListener('click', () => {
+            const input = document.getElementById('chat-input');
+            sendChatMessage(input.value);
+        });
+
+        document.getElementById('chat-input').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendChatMessage(e.target.value);
+            }
+            // Shift+Enter 换行
+        });
+
+        // ===== 聊天记录显示（增强版：带时间戳） =====
+        function appendMessage(role, text) {
+            const container = document.getElementById('chat-messages');
+            const div = document.createElement('div');
+            div.className = 'msg ' + role;
+            
+            // 消息文本
+            const textSpan = document.createElement('span');
+            textSpan.textContent = text;
+            div.appendChild(textSpan);
+            
+            // 时间戳
+            const timeSpan = document.createElement('span');
+            timeSpan.className = 'msg-time';
+            const now = new Date();
+            timeSpan.textContent = now.getHours().toString().padStart(2,'0') + ':' + 
+                                   now.getMinutes().toString().padStart(2,'0');
+            div.appendChild(timeSpan);
+            
+            container.appendChild(div);
+            scrollChat();
+        }
+
+        function scrollChat() {
+            const container = document.getElementById('chat-messages');
+            container.scrollTop = container.scrollHeight;
+        }
+
+        // ===== 语音输入（VAD增强版 - 按住说话/自动检测静音） =====
+        // ===== PCM 直接录音（不依赖 WebM 解码） =====
+        let pcmBuffer = [];
+        let audioCtx = null;
+        let scriptNode = null;
+        let sourceNode = null;
+
+        async function startRecording() {
+            if (isRecording) return;
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        sampleRate: 16000
+                    } 
+                });
+                
+                // 创建音频上下文（16kHz）
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+                await audioCtx.resume();
+                sourceNode = audioCtx.createMediaStreamSource(stream);
+                
+                // VAD分析器
+                vadAnalyser = audioCtx.createAnalyser();
+                vadAnalyser.fftSize = 256;
+                sourceNode.connect(vadAnalyser);
+
+                // ScriptProcessor 直接捕获 PCM
+                pcmBuffer = [];
+                scriptNode = audioCtx.createScriptProcessor(4096, 1, 1);
+                scriptNode.onaudioprocess = (event) => {
+                    if (!isRecording) return;
+                    const input = event.inputBuffer.getChannelData(0);
+                    // 追加到 PCM 缓冲区
+                    for (let i = 0; i < input.length; i++) {
+                        pcmBuffer.push(input[i]);
+                    }
+                };
+                sourceNode.connect(scriptNode);
+                scriptNode.connect(audioCtx.destination);
+
+                recordingStartTime = Date.now();
+
+                // 停止录音时处理
+                const processStop = async () => {
+                    stream.getTracks().forEach(t => t.stop());
+                    if (scriptNode) { scriptNode.disconnect(); scriptNode = null; }
+                    if (sourceNode) { sourceNode.disconnect(); sourceNode = null; }
+                    if (audioCtx) { await audioCtx.close(); audioCtx = null; }
+                    if (vadAnimationId) { cancelAnimationFrame(vadAnimationId); vadAnimationId = null; }
+                    document.getElementById('vad-indicator').classList.remove('show');
+                    document.getElementById('recording-time').classList.remove('show');
+                    if (recTimer) { clearInterval(recTimer); recTimer = null; }
+
+                    if (pcmBuffer.length < 1600) { // 少于0.1秒不要
+                        pcmBuffer = [];
+                        return;
+                    }
+                    
+                    const micBtn = document.getElementById('btn-mic');
+                    micBtn.textContent = '⋯';
+                    
+                    try {
+                        // 转为 WAV Blob
+                        const wavBlob = pcmToWavBlob(pcmBuffer, 16000);
+                        pcmBuffer = [];
+                        
+                        // 先用 Web Speech API
+                        let text = await transcribeWithWebSpeech(null);
+                        // 再走 Mimo 云端（用 WAV）
+                        if (!text) {
+                            text = await transcribeWavAudio(wavBlob);
+                        }
+                        if (text) {
+                            document.getElementById('chat-input').value = text;
+                            sendChatMessage(text);
+                        } else {
+                            appendMessage('ai', '😅 没听清楚，能再说一遍吗？');
+                        }
+                    } catch (e) {
+                        appendMessage('ai', '语音识别出错了：' + e.message);
+                    }
+                    micBtn.textContent = '🎤';
+                    pcmBuffer = [];
+                };
+
+                // 保存 stop 回调
+                window.__sttStopHandler = processStop;
+
+                isRecording = true;
+                const micBtn = document.getElementById('btn-mic');
+                micBtn.classList.add('listening');
+                micBtn.textContent = '🔴';
+                
+                document.getElementById('vad-indicator').classList.add('show');
+                document.getElementById('recording-time').classList.add('show');
+                updateVADLevel();
+                
+                recTimer = setInterval(() => {
+                    const sec = Math.floor((Date.now() - recordingStartTime) / 1000);
+                    document.getElementById('rec-sec').textContent = sec;
+                    if (sec >= 60) stopRecording();
+                }, 1000);
+
+            } catch (e) {
+                appendMessage('ai', '🎤 麦克风权限被拒绝了：' + e.message);
+            }
+        }
+
+        function stopRecording() {
+            if (!isRecording) return;
+            isRecording = false;
+            const micBtn = document.getElementById('btn-mic');
+            micBtn.classList.remove('listening');
+            micBtn.textContent = '🎤';
+            // 异步处理停止
+            if (window.__sttStopHandler) {
+                window.__sttStopHandler().catch(e => console.error('[STT] Stop error:', e));
+                window.__sttStopHandler = null;
+            }
+        }
+
+        // ===== PCM Float32 → WAV Blob =====
+        function pcmToWavBlob(pcmData, sampleRate) {
+            const numChannels = 1;
+            const bitsPerSample = 16;
+            const length = pcmData.length;
+            const dataSize = length * 2;
+            const buffer = new ArrayBuffer(44 + dataSize);
+            const view = new DataView(buffer);
+
+            // WAV header
+            const writeStr = (offset, str) => {
+                for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+            };
+            writeStr(0, 'RIFF');
+            view.setUint32(4, 36 + dataSize, true);
+            writeStr(8, 'WAVE');
+            writeStr(12, 'fmt ');
+            view.setUint32(16, 16, true);
+            view.setUint16(20, 1, true);           // PCM
+            view.setUint16(22, numChannels, true);
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, sampleRate * numChannels * 2, true);
+            view.setUint16(32, numChannels * 2, true);
+            view.setUint16(34, bitsPerSample, true);
+            writeStr(36, 'data');
+            view.setUint32(40, dataSize, true);
+
+            // PCM data
+            const pcmView = new Int16Array(buffer, 44, length);
+            for (let i = 0; i < length; i++) {
+                const s = Math.max(-1, Math.min(1, pcmData[i]));
+                pcmView[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+            }
+
+            return new Blob([buffer], { type: 'audio/wav' });
+        }
+
+        function updateVADLevel() {
+            if (!vadAnalyser || !isRecording) return;
+            const data = new Uint8Array(vadAnalyser.frequencyBinCount);
+            vadAnalyser.getByteTimeDomainData(data);
+            
+            // 计算音量级别
+            let sum = 0;
+            for (let i = 0; i < data.length; i++) {
+                sum += Math.abs(data[i] - 128);
+            }
+            const level = Math.min(100, (sum / data.length) * 2);
+            
+            document.getElementById('vad-level').style.width = level + '%';
+            
+            vadAnimationId = requestAnimationFrame(updateVADLevel);
+        }
+
+        // ===== 语音按钮（支持按住说话/点击切换） =====
+        const micBtn = document.getElementById('btn-mic');
+        
+        // 鼠标按下开始录音
+        micBtn.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            startRecording();
+        });
+        
+        // 鼠标松开停止录音
+        micBtn.addEventListener('mouseup', (e) => {
+            e.preventDefault();
+            if (isRecording) stopRecording();
+        });
+        
+        micBtn.addEventListener('mouseleave', () => {
+            if (isRecording) stopRecording();
+        });
+
+        // 触摸支持
+        micBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            startRecording();
+        });
+        
+        micBtn.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            if (isRecording) stopRecording();
+        });
+
+        // ===== Web Speech API 本地语音识别（内置在 Electron 中，无需网络） =====
+        async function transcribeWithWebSpeech(audioBlob) {
+            // 检查浏览器是否支持
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                console.log('[STT] Web Speech API not available');
+                return '';
+            }
+
+            return new Promise((resolve) => {
+                try {
+                    const recognition = new SpeechRecognition();
+                    recognition.lang = 'zh-CN';
+                    recognition.continuous = false;
+                    recognition.interimResults = false;
+                    recognition.maxAlternatives = 1;
+
+                    // 超时处理
+                    const timeout = setTimeout(() => {
+                        recognition.abort();
+                        resolve('');
+                    }, 10000);
+
+                    recognition.onresult = (event) => {
+                        clearTimeout(timeout);
+                        const text = event.results[0][0].transcript;
+                        if (text && text.trim()) {
+                            console.log('[STT] WebSpeech result:', text);
+                            resolve(text.trim());
+                        } else {
+                            resolve('');
+                        }
+                    };
+
+                    recognition.onerror = (event) => {
+                        clearTimeout(timeout);
+                        console.log('[STT] WebSpeech error:', event.error);
+                        resolve('');  // 返回空，让代码走 Mimo 云端
+                    };
+
+                    recognition.onend = () => {
+                        clearTimeout(timeout);
+                    };
+
+                    recognition.start();
+                } catch (e) {
+                    console.log('[STT] WebSpeech exception:', e.message);
+                    resolve('');
+                }
+            });
+        }
+
+        // ===== 调用 Mimo API 进行语音识别（新版 chat/completions 接口） =====
+        async function transcribeWavAudio(wavBlob) {
+            const config = await window.electronAPI.loadConfig();
+            const sttConfig = config.stt || {};
+            const baseURL = (sttConfig.baseURL || 'https://api.xiaomimimo.com/v1').replace(/\/audio\/transcriptions$/, '');
+            const apiKey = sttConfig.apiKey || '';
+            const model = sttConfig.model || 'mimo-v2.5-asr';
+            const language = sttConfig.language || 'zh';
+
+            // webm → wav 转 base64
+            // wavBlob 已经是 WAV 格式了，直接用
+            const buffer = await wavBlob.arrayBuffer();
+            // 分块编码，避免 Maximum call stack size exceeded
+            const bytes = new Uint8Array(buffer);
+            const chunkSize = 8192;
+            let binary = '';
+            for (let i = 0; i < bytes.length; i += chunkSize) {
+                const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+                binary += String.fromCharCode.apply(null, chunk);
+            }
+            const base64 = btoa(binary);
+            const audioDataUrl = 'data:audio/wav;base64,' + base64;
+
+            const requestBody = JSON.stringify({
+                model: model,
+                messages: [{
+                    role: 'user',
+                    content: [{
+                        type: 'input_audio',
+                        input_audio: { data: audioDataUrl }
+                    }]
+                }],
+                asr_options: { language: language }
+            });
+
+            const response = await fetch(baseURL.replace(/\/$/, '') + '/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Authorization': 'Bearer ' + apiKey,
+                    'Content-Type': 'application/json'
+                },
+                body: requestBody,
+                timeout: 30000
+            });
+
+            if (!response.ok) {
+                const errText = await response.text();
+                throw new Error('STT ' + response.status + ': ' + errText);
+            }
+
+            const result = await response.json();
+            const text = result?.choices?.[0]?.message?.content;
+            return text ? text.trim() : '';
+        }
+
+
+
+        // ===== 初始化聊天 =====
+        initChat();
 
         // ========== Init ==========
         initModel();
