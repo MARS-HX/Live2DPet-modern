@@ -108,4 +108,3 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Renderer log forwarding (avoids needing --enable-logging)
     rendererLog: (level, args) => ipcRenderer.send('renderer-log', level, args)
 });
-

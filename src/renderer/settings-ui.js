@@ -936,9 +936,7 @@ document.getElementById('btn-save-prompt').addEventListener('click', async () =>
     }
 });
 
-// ========== TTS Settings ==========
-
-let ttsMetas = [];
+// ========== TTS Settings (Only Mimo, 精简版) ==========
 
 async function loadTTSStatus() {
     if (!window.electronAPI || !window.electronAPI.ttsGetStatus) return;
@@ -951,118 +949,66 @@ async function loadTTSStatus() {
             const remaining = Math.max(0, Math.ceil((status.retryInterval - elapsed) / 1000));
             el.textContent = t('tts.circuitBreak').replace('{0}', remaining);
             el.className = 'status error';
-            restartBtn.style.display = '';
+            if (restartBtn) restartBtn.style.display = '';
         } else {
-            el.textContent = t('tts.ready') + (status.gpuMode ? t('tts.readyGpu') : t('tts.readyCpu'));
+            el.textContent = t('tts.ready') + ' (Mimo)';
             el.className = 'status success';
-            restartBtn.style.display = 'none';
+            if (restartBtn) restartBtn.style.display = 'none';
         }
         document.getElementById('tts-hint').style.display = 'none';
-        // Load metas and populate dropdowns
-        ttsMetas = await window.electronAPI.ttsGetMetas();
-        populateSpeakerDropdown();
     } else {
         el.textContent = t('tts.offline');
         el.className = 'status error';
-        restartBtn.style.display = '';
+        if (restartBtn) restartBtn.style.display = '';
     }
     const config = await window.electronAPI.loadConfig();
-    if (config.tts) {
-        document.getElementById('tts-speed').value = config.tts.speedScale || 1.0;
-        document.getElementById('tts-pitch').value = config.tts.pitchScale || 0.0;
-        document.getElementById('tts-volume').value = config.tts.volumeScale || 1.0;
-        document.getElementById('tts-speed-val').textContent = config.tts.speedScale || 1.0;
-        document.getElementById('tts-pitch-val').textContent = config.tts.pitchScale || 0.0;
-        document.getElementById('tts-volume-val').textContent = config.tts.volumeScale || 1.0;
-        // Restore audio mode
-        const audioMode = config.tts.audioMode || 'tts';
-        const radio = document.querySelector(`input[name="audio-mode"][value="${audioMode}"]`);
-        if (radio) radio.checked = true;
-        // Restore saved speaker + style selection
-        if (config.tts.styleId !== undefined) {
-            selectStyleById(config.tts.styleId);
-        }
-        // Restore GPU mode checkbox
-        const gpuCheckbox = document.getElementById('tts-gpu-mode');
-        if (gpuCheckbox) gpuCheckbox.checked = config.tts.gpuMode || false;
+    if (config.tts && config.tts.mimo) {
+        const mimo = config.tts.mimo;
+        document.getElementById('mimo-base-url').value = mimo.baseURL || '';
+        document.getElementById('mimo-api-key').value = mimo.apiKey || '';
+        document.getElementById('mimo-style-prompt').value = mimo.stylePrompt || '';
+        document.getElementById('mimo-format').value = mimo.format || 'wav';
+    } else {
+        // Set defaults if not present
+        document.getElementById('mimo-base-url').value = 'https://api.xiaomimimo.com/v1';
+        document.getElementById('mimo-style-prompt').value = '自然、流畅、清晰的中文语音，中性语调，速度适中。';
+        document.getElementById('mimo-format').value = 'wav';
     }
+    // Audio mode (if exists, keep)
+    const audioMode = config.tts?.audioMode || 'tts';
+    const radio = document.querySelector(`input[name="audio-mode"][value="${audioMode}"]`);
+    if (radio) radio.checked = true;
 }
 
-function populateSpeakerDropdown() {
-    const speakerSel = document.getElementById('tts-speaker');
-    speakerSel.innerHTML = '';
-    ttsMetas.forEach((speaker, i) => {
-        const opt = document.createElement('option');
-        opt.value = i;
-        opt.textContent = speaker.name;
-        speakerSel.appendChild(opt);
-    });
-    speakerSel.addEventListener('change', () => populateStyleDropdown(parseInt(speakerSel.value)));
-    if (ttsMetas.length > 0) populateStyleDropdown(0);
-}
-
-function populateStyleDropdown(speakerIdx) {
-    const styleSel = document.getElementById('tts-style-id');
-    styleSel.innerHTML = '';
-    const speaker = ttsMetas[speakerIdx];
-    if (!speaker) return;
-    speaker.styles.forEach(style => {
-        const opt = document.createElement('option');
-        opt.value = style.id;
-        opt.textContent = style.name;
-        styleSel.appendChild(opt);
-    });
-}
-
-function selectStyleById(styleId) {
-    for (let i = 0; i < ttsMetas.length; i++) {
-        const idx = ttsMetas[i].styles.findIndex(s => s.id === styleId);
-        if (idx >= 0) {
-            document.getElementById('tts-speaker').value = i;
-            populateStyleDropdown(i);
-            document.getElementById('tts-style-id').value = styleId;
-            return;
-        }
-    }
-}
-
-['tts-speed', 'tts-pitch', 'tts-volume'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.addEventListener('input', () => {
-        document.getElementById(id + '-val').textContent = el.value;
-    });
-});
-
+// Save TTS config (only Mimo, only essential fields)
 document.getElementById('btn-save-tts').addEventListener('click', async () => {
     const ttsConfig = {
-        styleId: parseInt(document.getElementById('tts-style-id').value),
-        speedScale: parseFloat(document.getElementById('tts-speed').value),
-        pitchScale: parseFloat(document.getElementById('tts-pitch').value),
-        volumeScale: parseFloat(document.getElementById('tts-volume').value)
-    };
-    await window.electronAPI.ttsSetConfig(ttsConfig);
-    // Save audio mode to config (only send tts section to avoid triggering model reload)
-    const audioMode = document.querySelector('input[name="audio-mode"]:checked')?.value || 'tts';
-    await window.electronAPI.saveConfig({
-        tts: {
-            audioMode,
-            styleId: ttsConfig.styleId,
-            speedScale: ttsConfig.speedScale,
-            pitchScale: ttsConfig.pitchScale,
-            volumeScale: ttsConfig.volumeScale,
-            gpuMode: document.getElementById('tts-gpu-mode')?.checked || false
+        serviceType: 'mimo',
+        audioMode: document.querySelector('input[name="audio-mode"]:checked')?.value || 'tts',
+        mimo: {
+            baseURL: document.getElementById('mimo-base-url').value.trim(),
+            apiKey: document.getElementById('mimo-api-key').value.trim(),
+            stylePrompt: document.getElementById('mimo-style-prompt').value.trim(),
+            format: document.getElementById('mimo-format').value,
         }
-    });
+    };
+    await window.electronAPI.saveConfig({ tts: ttsConfig });
+    // Reinitialize TTS service in main process
+    if (window.electronAPI.ttsReinit) {
+        await window.electronAPI.ttsReinit(ttsConfig);
+    }
     showStatus('tts-save-status', t('status.saved'), 'success');
+    await loadTTSStatus(); // refresh UI
 });
 
+// Test TTS button
 document.getElementById('btn-test-tts').addEventListener('click', async () => {
     const text = document.getElementById('tts-test-text').value.trim();
     if (!text) return;
     showStatus('tts-test-status', t('tts.synthesizing'), '');
     const result = await window.electronAPI.ttsSynthesize(text);
     if (result.success) {
-        showStatus('tts-test-status', t('tts.translated') + result.jaText, 'success');
+        showStatus('tts-test-status', t('tts.synthSuccess'), 'success');
         const wavBytes = Uint8Array.from(atob(result.wav), c => c.charCodeAt(0));
         const blob = new Blob([wavBytes], { type: 'audio/wav' });
         const audio = new Audio(URL.createObjectURL(blob));
@@ -1071,8 +1017,6 @@ document.getElementById('btn-test-tts').addEventListener('click', async () => {
         showStatus('tts-test-status', t('tts.synthFailed') + result.error, 'error');
     }
 });
-
-loadTTSStatus();
 
 // Restart TTS button
 document.getElementById('btn-restart-tts')?.addEventListener('click', async () => {
@@ -1087,160 +1031,6 @@ document.getElementById('btn-restart-tts')?.addEventListener('click', async () =
         el.className = 'status error';
     }
 });
-
-// One-click VOICEVOX setup
-document.getElementById('btn-setup-voicevox')?.addEventListener('click', async () => {
-    const btn = document.getElementById('btn-setup-voicevox');
-    const status = document.getElementById('voicevox-setup-status');
-    btn.disabled = true;
-    btn.textContent = t('tts.installing');
-    status.textContent = t('tts.preparing');
-    status.className = 'status';
-
-    if (window.electronAPI.onVoicevoxSetupProgress) {
-        window.electronAPI.onVoicevoxSetupProgress((msg) => {
-            status.textContent = msg;
-        });
-    }
-
-    const result = await window.electronAPI.setupVoicevox();
-    btn.disabled = false;
-    btn.textContent = t('tts.setup');
-    if (result.success) {
-        status.textContent = t('tts.installDone');
-        status.className = 'status success';
-        // Auto-restart TTS
-        const restartResult = await window.electronAPI.ttsRestart();
-        if (restartResult.success) {
-            await loadTTSStatus();
-            status.textContent = t('tts.installDoneTts');
-        }
-    } else {
-        status.textContent = t('tts.installFail') + result.error;
-        status.className = 'status error';
-    }
-});
-
-// Default audio generation
-document.getElementById('btn-generate-default-audio')?.addEventListener('click', async () => {
-    const textarea = document.getElementById('default-audio-phrases');
-    const phrases = textarea.value.split('\n').map(s => s.trim()).filter(Boolean);
-    if (phrases.length === 0) {
-        showStatus('default-audio-status', t('tts.enterPhrase'), 'error');
-        return;
-    }
-    const styleId = parseInt(document.getElementById('tts-style-id').value) || 0;
-    showStatus('default-audio-status', t('tts.generating').replace('{0}', phrases.length), '');
-    const result = await window.electronAPI.generateDefaultAudio(phrases, styleId);
-    if (result.success) {
-        const ok = result.results.filter(r => r.success).length;
-        showStatus('default-audio-status', t('tts.generateDone').replace('{0}', ok).replace('{1}', phrases.length), 'success');
-    } else {
-        showStatus('default-audio-status', t('status.failed') + result.error, 'error');
-    }
-});
-
-// Load saved phrases into textarea
-(async () => {
-    const config = await window.electronAPI?.loadConfig();
-    if (config?.tts?.defaultPhrases) {
-        const textarea = document.getElementById('default-audio-phrases');
-        if (textarea) textarea.value = config.tts.defaultPhrases.join('\n');
-    }
-})();
-
-// VVM config
-const VVM_CHARACTERS = {
-    '0.vvm': '四国めたん, ずんだもん, 春日部つむぎ, 雨晴はう',
-    '1.vvm': '冥鳴ひまり',
-    '2.vvm': '九州そら',
-    '3.vvm': '波音リツ, 中国うさぎ',
-    '4.vvm': '玄野武宏, 剣崎雌雄',
-    '5.vvm': '四国めたん(ささやき), ずんだもん(ささやき), 九州そら(ささやき)',
-    '6.vvm': 'No.7',
-    '7.vvm': '後鬼',
-    '8.vvm': 'WhiteCUL',
-    '9.vvm': '白上虎太郎',
-    '10.vvm': '玄野武宏(追加), ちび式じい',
-    '11.vvm': '櫻歌ミコ, ナースロボ＿タイプＴ',
-    '12.vvm': '†聖騎士 紅桜†, 雀松朱司, 麒ヶ島宗麟',
-    '13.vvm': '春歌ナナ, 猫使アル, 猫使ビィ',
-    '14.vvm': '栗田まろん, あいえるたん, 満別花丸, 琴詠ニア',
-    '15.vvm': 'ずんだもん(追加), 青山龍星, もち子さん, 小夜/SAYO',
-    '16.vvm': '後鬼(追加)',
-    '17.vvm': 'Voidoll',
-    '18.vvm': 'ぞん子, 中部つるぎ',
-    '19.vvm': '離途, 黒沢冴白',
-    '20.vvm': 'ユーレイちゃん',
-    '21.vvm': '東北ずん子, 東北きりたん, 東北イタコ, 猫使(追加)',
-    '22.vvm': 'あんこもん',
-    '23.vvm': 'あんこもん(ささやき)',
-    'n0.vvm': 'VOICEVOX Nemo (女声1-6, 男声1-3)',
-};
-
-async function loadVvmConfig() {
-    if (!window.electronAPI?.ttsGetAvailableVvms) return;
-    const available = await window.electronAPI.ttsGetAvailableVvms();
-    const config = await window.electronAPI.loadConfig();
-    const loaded = config.tts?.vvmFiles || ['0.vvm'];
-    const container = document.getElementById('vvm-checkboxes');
-    if (!container) return;
-
-    const allVvms = Object.keys(VVM_CHARACTERS);
-    container.innerHTML = allVvms.map(f => {
-        const onDisk = available.includes(f);
-        const checked = loaded.includes(f) && onDisk ? 'checked' : '';
-        const disabled = onDisk ? '' : 'disabled';
-        const desc = VVM_CHARACTERS[f] || '';
-        const dlBtn = onDisk
-            ? '<span style="color:#4a4;font-size:11px;">OK</span>'
-            : `<button class="btn-dl-vvm" data-vvm="${f}" style="font-size:11px;padding:1px 6px;cursor:pointer;">${t('tts.vvm.dl')}</button>`;
-        return `<label style="display:flex;align-items:center;gap:4px;padding:2px 0;font-size:12px;">
-            <input type="checkbox" value="${f}" ${checked} ${disabled}>
-            <b>${f}</b> ${desc} ${dlBtn}
-        </label>`;
-    }).join('');
-
-    container.querySelectorAll('.btn-dl-vvm').forEach(btn => {
-        btn.addEventListener('click', async (e) => {
-            e.preventDefault();
-            const vvm = btn.dataset.vvm;
-            btn.textContent = '...';
-            btn.disabled = true;
-            const result = await window.electronAPI.downloadVvm(vvm);
-            if (result.success) {
-                // Auto-add downloaded VVM to config and restart TTS
-                const config = await window.electronAPI.loadConfig();
-                const vvmFiles = config.tts?.vvmFiles || ['0.vvm'];
-                if (!vvmFiles.includes(vvm)) {
-                    vvmFiles.push(vvm);
-                    await window.electronAPI.saveConfig({ tts: { vvmFiles } });
-                }
-                await loadVvmConfig();
-                await window.electronAPI.ttsRestart();
-                showStatus('vvm-save-status', t('tts.vvm.saved'), 'success');
-            } else {
-                btn.textContent = t('status.failed');
-                showStatus('vvm-save-status', t('tts.vvm.dlFail') + result.error, 'error');
-            }
-        });
-    });
-}
-
-document.getElementById('btn-save-vvm')?.addEventListener('click', async () => {
-    const checks = document.querySelectorAll('#vvm-checkboxes input[type=checkbox]:checked');
-    const vvmFiles = Array.from(checks).map(c => c.value);
-    if (vvmFiles.length === 0) {
-        showStatus('vvm-save-status', t('tts.vvm.selectOne'), 'error');
-        return;
-    }
-    // Only save changed vvm list, not the full config
-    await window.electronAPI.saveConfig({ tts: { vvmFiles } });
-    // Relaunch app to apply VVM changes
-    await window.electronAPI.appRelaunch();
-});
-
-loadVvmConfig();
 
 // ========== Max Tokens Multiplier ==========
 
@@ -1288,3 +1078,229 @@ document.getElementById('enhance-enabled').addEventListener('change', async () =
     const enabled = document.getElementById('enhance-enabled').checked;
     await window.electronAPI.saveConfig({ enhance: { enabled } });
 });
+
+// ========== 语音识别 - 使用云端 STT（Mimo API，通过主进程 IPC） ==========
+let cloudSTTActive = false;
+let mediaStream = null;
+let audioContext = null;
+let scriptProcessor = null;
+let sourceNode = null;
+
+// 辅助函数：Float32 PCM 转 16-bit Int PCM（小端）
+function float32ToInt16(float32Array) {
+    const int16Array = new Int16Array(float32Array.length);
+    for (let i = 0; i < float32Array.length; i++) {
+        let s = Math.max(-1, Math.min(1, float32Array[i]));
+        int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+    }
+    return int16Array;
+}
+
+// 启动云端语音识别（通过 Mimo API）
+async function startCloudSTT() {
+    if (cloudSTTActive) return;
+
+    // 1. 请求麦克风权限（同时获取流）
+    let stream;
+    try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: {
+            channelCount: 1,
+            sampleRate: 16000,
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false
+        } });
+        mediaStream = stream;
+    } catch (err) {
+        console.error('[STT] Microphone permission error:', err);
+        showStatus('voice-status', '麦克风权限被拒绝，请在系统设置中允许', 'error');
+        return;
+    }
+
+    // 2. 确保主进程 STT 已初始化（会读取配置中的 stt.baseURL 等）
+    if (window.electronAPI && window.electronAPI.sttInitialize) {
+        const initOk = await window.electronAPI.sttInitialize();
+        if (!initOk) {
+            showStatus('voice-status', '云端 STT 初始化失败，请检查配置文件中的 stt 字段（baseURL/apiKey）', 'error');
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(t => t.stop());
+                mediaStream = null;
+            }
+            return;
+        }
+    } else {
+        showStatus('voice-status', '当前 Electron 版本不支持 STT IPC', 'error');
+        if (mediaStream) {
+            mediaStream.getTracks().forEach(t => t.stop());
+            mediaStream = null;
+        }
+        return;
+    }
+
+    // 3. 创建 AudioContext (采样率强制 16000)
+    try {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+        await audioContext.resume();
+    } catch (err) {
+        console.error('[STT] AudioContext error:', err);
+        showStatus('voice-status', '无法创建音频上下文', 'error');
+        if (mediaStream) {
+            mediaStream.getTracks().forEach(t => t.stop());
+            mediaStream = null;
+        }
+        return;
+    }
+
+    sourceNode = audioContext.createMediaStreamSource(stream);
+    scriptProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+    scriptProcessor.onaudioprocess = (event) => {
+        if (!cloudSTTActive) return;
+        const inputData = event.inputBuffer.getChannelData(0);
+        const int16Data = float32ToInt16(inputData);
+        // 发送给主进程
+        if (window.electronAPI && window.electronAPI.sttFeedAudio) {
+            window.electronAPI.sttFeedAudio(int16Data.buffer);
+        }
+    };
+    sourceNode.connect(scriptProcessor);
+    scriptProcessor.connect(audioContext.destination);
+
+    // 4. 通知主进程开始识别
+    if (window.electronAPI.sttStart) {
+        await window.electronAPI.sttStart();
+    }
+    cloudSTTActive = true;
+
+    // 更新 UI
+    const btn = document.getElementById('btn-voice-toggle');
+    if (btn) {
+        btn.textContent = '⏹️ 停止语音对话';
+        btn.classList.add('recording-btn');
+    }
+    const statusEl = document.getElementById('voice-status');
+    statusEl.textContent = '云端语音识别已开启，正在监听...';
+    statusEl.className = 'status success';
+    console.log('[STT] Cloud STT session started');
+}
+
+// 停止云端语音识别
+async function stopCloudSTT() {
+    if (!cloudSTTActive) return;
+    cloudSTTActive = false;
+
+    // 通知主进程停止识别
+    if (window.electronAPI && window.electronAPI.sttStop) {
+        await window.electronAPI.sttStop();
+    }
+
+    // 关闭音频处理链
+    if (scriptProcessor) {
+        scriptProcessor.disconnect();
+        scriptProcessor.onaudioprocess = null;
+        scriptProcessor = null;
+    }
+    if (sourceNode) {
+        sourceNode.disconnect();
+        sourceNode = null;
+    }
+    if (audioContext) {
+        await audioContext.close();
+        audioContext = null;
+    }
+    if (mediaStream) {
+        mediaStream.getTracks().forEach(track => track.stop());
+        mediaStream = null;
+    }
+
+    // 更新 UI
+    const btn = document.getElementById('btn-voice-toggle');
+    if (btn) {
+        btn.textContent = '🎤 开始语音对话';
+        btn.classList.remove('recording-btn');
+    }
+    const statusEl = document.getElementById('voice-status');
+    statusEl.textContent = '语音对话已关闭';
+    statusEl.className = 'status';
+    setTimeout(() => {
+        if (statusEl.className === 'status') statusEl.className = 'status';
+    }, 2000);
+    console.log('[STT] Cloud STT session stopped');
+}
+
+// 监听主进程返回的识别结果和状态
+if (window.electronAPI) {
+    if (window.electronAPI.onSttResult) {
+        window.electronAPI.onSttResult((text) => {
+            if (text && text.trim()) {
+                console.log('[STT] Result:', text);
+                const statusEl = document.getElementById('voice-status');
+                statusEl.textContent = `识别结果: ${text}`;
+                statusEl.className = 'status success';
+                // 将文本发送给宠物 AI
+                if (petSystem && typeof petSystem.handleUserText === 'function') {
+                    petSystem.handleUserText(text);
+                }
+            }
+        });
+    }
+    if (window.electronAPI.onSttStatus) {
+        window.electronAPI.onSttStatus((status) => {
+            // 可选：显示 listening 等状态
+            if (status === 'listening') {
+                const statusEl = document.getElementById('voice-status');
+                if (statusEl && statusEl.textContent.includes('监听')) {
+                    // 保持原有文字
+                }
+            }
+        });
+    }
+}
+
+// 绑定语音开关按钮（确保只绑定一次）
+const voiceToggleBtn = document.getElementById('btn-voice-toggle');
+if (voiceToggleBtn) {
+    const newBtn = voiceToggleBtn.cloneNode(true);
+    voiceToggleBtn.parentNode.replaceChild(newBtn, voiceToggleBtn);
+    newBtn.addEventListener('click', () => {
+        if (cloudSTTActive) {
+            stopCloudSTT();
+        } else {
+            startCloudSTT();
+        }
+    });
+}
+
+// 页面关闭时清理
+window.addEventListener('beforeunload', () => {
+    if (cloudSTTActive) {
+        if (window.electronAPI && window.electronAPI.sttStop) {
+            window.electronAPI.sttStop();
+        }
+        if (mediaStream) {
+            mediaStream.getTracks().forEach(t => t.stop());
+        }
+        if (audioContext) {
+            audioContext.close();
+        }
+    }
+});
+
+// ========== 兼容旧 STT 配置（保留空实现，避免报错） ==========
+async function loadSTTConfig() {
+    // 此函数仅用于兼容，无实际作用
+    try {
+        if (window.electronAPI?.loadConfig) {
+            await window.electronAPI.loadConfig();
+        }
+    } catch (e) {}
+}
+const saveAsrBtn = document.getElementById('btn-save-asr');
+if (saveAsrBtn) {
+    saveAsrBtn.addEventListener('click', async () => {
+        showStatus('asr-status', '云端 STT 配置已在 config.json 的 stt 字段中设置', 'success');
+    });
+}
+loadSTTConfig();
+
+// Final: load TTS status after all DOM is ready
+loadTTSStatus();

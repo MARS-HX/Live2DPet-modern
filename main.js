@@ -8,7 +8,7 @@ const crypto = require('crypto');
 const https = require('https');
 const http = require('http');
 
-// 全局启用 Web Speech API
+// 全局启用 Web Speech API（备用，但已禁用 STT）
 app.commandLine.appendSwitch('enable-blink-features', 'SpeechRecognition');
 
 const { AppContext } = require('./src/main/app-context');
@@ -33,7 +33,7 @@ const configManager = createConfigManager(app);
 const { mt } = createI18nHelper(ctx);
 const basePath = __dirname;
 
-// ========== 加载 STT 服务 ==========
+// ========== 不再加载 STT 服务 ==========
 
 const { createSettingsWindow } = registerWindowHandlers(ctx, ipcMain, {
     BrowserWindow, path, basePath, updateTrayMenu: () => trayManager.updateTrayMenu()
@@ -64,6 +64,7 @@ ipcMain.handle('REQUEST_MICROPHONE_ACCESS', async () => {
     return true;
 });
 
+// ========== 不再注册 stt 相关 IPC ==========
 
 // ========== App Lifecycle ==========
 app.whenReady().then(async () => {
@@ -82,7 +83,7 @@ app.whenReady().then(async () => {
     createSettingsWindow();
     trayManager.createTray();
 
-    // TTS 初始化
+    // TTS 初始化（原有逻辑）
     setImmediate(async () => {
         const config = await configManager.loadConfigFile();
         const ttsConfig = config.tts || {};
