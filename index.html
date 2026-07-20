@@ -187,11 +187,13 @@
     </div>
     <div class="card">
         <h2 data-i18n="detect.title">Detection Settings</h2>
-        <label data-i18n="detect.interval">API send frequency (sec)</label>
+        <label data-i18n="detect.interval">AI检测间隔（秒）</label>
         <input type="number" id="interval" value="30" min="10" max="300">
-        <label data-i18n="detect.chatGap">Min chat gap (sec)</label>
+        <label data-i18n="detect.chatGap">回复间隔（秒）</label>
         <input type="number" id="chat-gap" value="5" min="0" max="60">
-        <button class="btn btn-primary" id="btn-save-interval" data-i18n="btn.save">Save</button>
+        <label>截图间隔（秒，0=每次检测都截）</label>
+        <input type="number" id="screenshot-interval" value="0" min="0" max="600" style="margin-bottom:4px;">
+        <button class="btn btn-primary" id="btn-save-interval" data-i18n="btn.save">保存</button>
     </div>
     <div class="card">
         <label style="display:inline-flex;align-items:center;gap:6px;">
@@ -330,25 +332,83 @@
 
     <!-- TTS & Voice Tab (使用云端 STT Mimo API) -->
     <div id="tab-tts" class="tab-content">
-        <!-- 小米 Mimo TTS 配置（精简版） -->
+        <!-- TTS 配置（多后端支持） -->
         <div class="card">
-            <h2>小米 Mimo API 配置 (TTS)</h2>
+            <h2>语音合成 (TTS) 配置</h2>
             <div class="status" id="tts-status"></div>
-            <p class="model-info" id="tts-hint">使用小米 Mimo API 进行中文语音合成，需要有效的 API Key。</p>
+            <p class="model-info" id="tts-hint">选择 TTS 服务商并填写对应配置。</p>
             <div style="display:flex; gap:8px; align-items:center; margin:8px 0;">
                 <button class="btn btn-secondary" id="btn-restart-tts" style="display:none;" data-i18n="tts.restart">Restart TTS</button>
             </div>
-            <label>API Base URL：</label>
-            <input type="text" id="mimo-base-url" placeholder="https://api.xiaomimimo.com/v1">
-            <label>API Key：</label>
-            <input type="password" id="mimo-api-key">
-            <label>风格描述（可选）：</label>
-            <textarea id="mimo-style-prompt" rows="3" placeholder="自然、流畅、清晰的中文语音，中性语调，速度适中。"></textarea>
-            <label>音频格式：</label>
-            <select id="mimo-format">
-                <option value="wav">WAV</option>
-                <option value="mp3">MP3</option>
+            
+            <label>TTS 服务商：</label>
+            <select id="tts-provider" style="margin-bottom:8px;">
+                <option value="mimo">小米蜜模 Mimo</option>
+                <option value="aliyun">阿里云 TTS</option>
+            <option value="local">本地 VITS2</option>
             </select>
+
+            <!-- Mimo 配置 -->
+            <div id="tts-config-mimo">
+                <label>API 地址：</label>
+                <input type="text" id="mimo-base-url" placeholder="https://api.xiaomimimo.com/v1">
+                <label>API Key：</label>
+                <input type="password" id="mimo-api-key">
+                <label>风格描述（可选）：</label>
+                <textarea id="mimo-style-prompt" rows="3" placeholder="自然、流畅、清晰的中文语音"></textarea>
+                <label>音频格式：</label>
+                <select id="mimo-format">
+                    <option value="wav">WAV</option>
+                    <option value="mp3">MP3</option>
+                </select>
+            </div>
+
+            <!-- 阿里云配置 -->
+            <div id="tts-config-aliyun" style="display:none;">
+                <label>AccessKey ID：</label>
+                <input type="text" id="aliyun-access-key-id" placeholder="你的阿里云 AccessKey ID">
+                <label>AccessKey Secret：</label>
+                <input type="password" id="aliyun-access-key-secret" placeholder="你的阿里云 AccessKey Secret">
+                <label>AppKey：</label>
+                <input type="text" id="aliyun-app-key" placeholder="语音合成项目的 AppKey">
+                <label>音色：</label>
+                <select id="aliyun-voice">
+                    <option value="xiaoyun">小云 (标准女声)</option>
+                    <option value="zhimiao">知妙 (温柔女声)</option>
+                    <option value="xiaogang">小刚 (标准男声)</option>
+                    <option value="aixia">艾霞 (情感女声)</option>
+                    <option value="sijing">思静 (情感女声)</option>
+                </select>
+                <label>地域：</label>
+                <input type="text" id="aliyun-region" value="cn-shanghai" placeholder="如 cn-shanghai">
+            </div>
+
+            <!-- 本地 VITS2 配置 -->
+            <div id="tts-config-local" style="display:none;">
+                <label>服务地址：</label>
+                <input type="text" id="local-base-url" value="http://localhost:7860" placeholder="http://localhost:7860">
+                <label>TTS 接口路径：</label>
+                <input type="text" id="local-tts-endpoint" value="/run/tts" placeholder="/run/tts">
+                <label>请求方式：</label>
+                <select id="local-method">
+                    <option value="get">GET</option>
+                    <option value="post">POST</option>
+                </select>
+                <label>文本参数名：</label>
+                <input type="text" id="local-text-param" value="text" placeholder="text">
+                <label>说话人 ID：</label>
+                <input type="text" id="local-speaker" value="0" placeholder="0">
+                <label>语言：</label>
+                <input type="text" id="local-language" value="zh" placeholder="zh">
+                <label>响应类型：</label>
+                <select id="local-response-type">
+                    <option value="json">JSON (base64)</option>
+                    <option value="blob">直接音频流</option>
+                </select>
+                <label>音频字段路径（JSON 模式）：</label>
+                <input type="text" id="local-audio-path" value="audio" placeholder="如 data.audio">
+            </div>
+
             <button class="btn btn-primary" id="btn-save-tts" data-i18n="tts.save">保存设置</button>
             <div class="status" id="tts-save-status"></div>
         </div>
@@ -378,7 +438,9 @@
             <h2 data-i18n="tts.test.title">TTS Test</h2>
             <input type="text" id="tts-test-text" data-i18n-ph="tts.test.placeholder" value="你好，我是你的桌面宠物">
             <button class="btn btn-secondary" id="btn-test-tts" data-i18n="tts.test.btn">Test TTS</button>
+            <button class="btn btn-secondary" id="btn-diagnose-tts" style="margin-left:4px;font-size:11px;">🔍 诊断TTS</button>
             <div class="status" id="tts-test-status"></div>
+            <div class="status" id="tts-diagnose-status"></div>
         </div>
     </div>
 

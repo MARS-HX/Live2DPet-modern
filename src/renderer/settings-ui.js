@@ -85,6 +85,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             document.getElementById('chat-gap').value = fileConfig.chatGap;
             petSystem.chatGapMs = parseInt(fileConfig.chatGap) * 1000;
         }
+        if (fileConfig.screenshotInterval != null) {
+            document.getElementById('screenshot-interval').value = fileConfig.screenshotInterval;
+            petSystem.screenshotInterval = parseInt(fileConfig.screenshotInterval);
+        }
         // Load translation API config
         if (fileConfig.translation) {
             document.getElementById('tl-api-url').value = fileConfig.translation.baseURL || '';
@@ -159,9 +163,11 @@ document.getElementById('btn-test-api').addEventListener('click', async () => {
 document.getElementById('btn-save-interval').addEventListener('click', () => {
     const seconds = parseInt(document.getElementById('interval').value);
     const chatGap = parseInt(document.getElementById('chat-gap').value);
-    if (window.electronAPI) window.electronAPI.saveConfig({ interval: seconds, chatGap });
+    const shotInterval = parseInt(document.getElementById('screenshot-interval').value) || 0;
+    if (window.electronAPI) window.electronAPI.saveConfig({ interval: seconds, chatGap, screenshotInterval: shotInterval });
     petSystem.setInterval(seconds * 1000);
     petSystem.chatGapMs = chatGap * 1000;
+    petSystem.screenshotInterval = shotInterval;
 });
 
 // ========== Start/Stop ==========
@@ -938,6 +944,25 @@ document.getElementById('btn-save-prompt').addEventListener('click', async () =>
 
 // ========== TTS Settings (Only Mimo, 精简版) ==========
 
+// ========== TTS 服务商切换 ==========
+function switchTTSProvider(provider) {
+    const mimoDiv = document.getElementById('tts-config-mimo');
+    const aliyunDiv = document.getElementById('tts-config-aliyun');
+    const localDiv = document.getElementById('tts-config-local');
+    if (!mimoDiv || !aliyunDiv || !localDiv) return;
+    mimoDiv.style.display = provider === 'mimo' ? 'block' : 'none';
+    aliyunDiv.style.display = provider === 'aliyun' ? 'block' : 'none';
+    localDiv.style.display = provider === 'local' ? 'block' : 'none';
+}
+
+// 监听服务商切换
+document.addEventListener('DOMContentLoaded', () => {
+    const sel = document.getElementById('tts-provider');
+    if (sel) {
+        sel.addEventListener('change', () => switchTTSProvider(sel.value));
+    }
+});
+
 async function loadTTSStatus() {
     if (!window.electronAPI || !window.electronAPI.ttsGetStatus) return;
     const status = await window.electronAPI.ttsGetStatus();
@@ -962,28 +987,56 @@ async function loadTTSStatus() {
         if (restartBtn) restartBtn.style.display = '';
     }
     const config = await window.electronAPI.loadConfig();
-    if (config.tts && config.tts.mimo) {
-        const mimo = config.tts.mimo;
-        document.getElementById('mimo-base-url').value = mimo.baseURL || '';
-        document.getElementById('mimo-api-key').value = mimo.apiKey || '';
-        document.getElementById('mimo-style-prompt').value = mimo.stylePrompt || '';
-        document.getElementById('mimo-format').value = mimo.format || 'wav';
-    } else {
-        // Set defaults if not present
-        document.getElementById('mimo-base-url').value = 'https://api.xiaomimimo.com/v1';
-        document.getElementById('mimo-style-prompt').value = '自然、流畅、清晰的中文语音，中性语调，速度适中。';
-        document.getElementById('mimo-format').value = 'wav';
+    const ttsCfg = config.tts || {};
+    
+    // 服务商切换
+    const provider = ttsCfg.serviceType || 'mimo';
+    const providerSel = document.getElementById('tts-provider');
+    if (providerSel) providerSel.value = provider;
+    switchTTSProvider(provider);
+    
+    // Mimo 配置
+    const mimo = ttsCfg.mimo || {};
+    document.getElementById('mimo-base-url').value = mimo.baseURL || 'https://api.xiaomimimo.com/v1';
+    document.getElementById('mimo-api-key').value = mimo.apiKey || '';
+    document.getElementById('mimo-style-prompt').value = mimo.stylePrompt || '自然、流畅、清晰的中文语音';
+    document.getElementById('mimo-format').value = mimo.format || 'wav';
+    
+    // 阿里云配置
+    const aliyun = ttsCfg.aliyun || {};
+    const aliId = document.getElementById('aliyun-access-key-id');
+    if (aliId) {
+        aliId.value = aliyun.accessKeyId || '';
+        document.getElementById('aliyun-access-key-secret').value = aliyun.accessKeySecret || '';
+        document.getElementById('aliyun-app-key').value = aliyun.appKey || '';
+        document.getElementById('aliyun-voice').value = aliyun.voice || 'xiaoyun';
+        document.getElementById('aliyun-region').value = aliyun.region || 'cn-shanghai';
     }
-    // Audio mode (if exists, keep)
-    const audioMode = config.tts?.audioMode || 'tts';
+    // 本地 VITS2 配置
+    const localCfg = ttsCfg.local || {};
+    const localBase = document.getElementById('local-base-url');
+    if (localBase) {
+        localBase.value = localCfg.baseURL || 'http://localhost:7860';
+        document.getElementById('local-tts-endpoint').value = localCfg.ttsEndpoint || '/run/tts';
+        document.getElementById('local-method').value = localCfg.method || 'get';
+        document.getElementById('local-text-param').value = localCfg.textParam || 'text';
+        document.getElementById('local-speaker').value = localCfg.speaker || '0';
+        document.getElementById('local-language').value = localCfg.language || 'zh';
+        document.getElementById('local-response-type').value = localCfg.responseType || 'json';
+        document.getElementById('local-audio-path').value = localCfg.audioPath || 'audio';
+    }
+    
+    // Audio mode
+    const audioMode = ttsCfg.audioMode || 'tts';
     const radio = document.querySelector(`input[name="audio-mode"][value="${audioMode}"]`);
     if (radio) radio.checked = true;
 }
 
-// Save TTS config (only Mimo, only essential fields)
+// Save TTS config (多后端)
 document.getElementById('btn-save-tts').addEventListener('click', async () => {
+    const provider = document.getElementById('tts-provider')?.value || 'mimo';
     const ttsConfig = {
-        serviceType: 'mimo',
+        serviceType: provider,
         audioMode: document.querySelector('input[name="audio-mode"]:checked')?.value || 'tts',
         mimo: {
             baseURL: document.getElementById('mimo-base-url').value.trim(),
@@ -992,13 +1045,37 @@ document.getElementById('btn-save-tts').addEventListener('click', async () => {
             format: document.getElementById('mimo-format').value,
         }
     };
+    // 阿里云配置
+    const aliId = document.getElementById('aliyun-access-key-id');
+    if (aliId) {
+        ttsConfig.aliyun = {
+            accessKeyId: aliId.value.trim(),
+            accessKeySecret: document.getElementById('aliyun-access-key-secret').value.trim(),
+            appKey: document.getElementById('aliyun-app-key').value.trim(),
+            voice: document.getElementById('aliyun-voice').value,
+            region: document.getElementById('aliyun-region').value.trim() || 'cn-shanghai'
+        };
+    }
+    // 本地 VITS2 配置
+    const localBase = document.getElementById('local-base-url');
+    if (localBase) {
+        ttsConfig.local = {
+            baseURL: localBase.value.trim() || 'http://localhost:7860',
+            ttsEndpoint: document.getElementById('local-tts-endpoint').value.trim() || '/run/tts',
+            method: document.getElementById('local-method').value || 'get',
+            textParam: document.getElementById('local-text-param').value.trim() || 'text',
+            speaker: document.getElementById('local-speaker').value.trim() || '0',
+            language: document.getElementById('local-language').value.trim() || 'zh',
+            responseType: document.getElementById('local-response-type').value || 'json',
+            audioPath: document.getElementById('local-audio-path').value.trim() || 'audio'
+        };
+    }
     await window.electronAPI.saveConfig({ tts: ttsConfig });
-    // Reinitialize TTS service in main process
     if (window.electronAPI.ttsReinit) {
         await window.electronAPI.ttsReinit(ttsConfig);
     }
     showStatus('tts-save-status', t('status.saved'), 'success');
-    await loadTTSStatus(); // refresh UI
+    await loadTTSStatus();
 });
 
 // Test TTS button
@@ -1028,6 +1105,31 @@ document.getElementById('btn-restart-tts')?.addEventListener('click', async () =
         await loadTTSStatus();
     } else {
         el.textContent = t('tts.restartFailed') + (result.error || t('tts.unknownError'));
+        el.className = 'status error';
+    }
+});
+
+// ========== TTS 诊断 ==========
+document.getElementById('btn-diagnose-tts')?.addEventListener('click', async () => {
+    const el = document.getElementById('tts-diagnose-status');
+    el.textContent = '正在诊断...';
+    el.className = 'status info';
+    try {
+        const diag = await window.electronAPI.ttsDiagnose();
+        if (!diag) throw new Error('IPC无响应');
+        const lines = [
+            'TTS服务: ' + (diag.serviceExists ? '存在' : '不存在'),
+            '已初始化: ' + (diag.initialized ? '是' : '否'),
+            '熔断: ' + (diag.degraded ? '已熔断' : '正常'),
+            '失败率: ' + diag.failCount + '/' + diag.maxFails,
+            'API Key: ' + (diag.config?.hasApiKey ? '已设置' : '未设置'),
+            '模型: ' + (diag.config?.model || '无'),
+            '可用: ' + (diag.isAvailable ? '是' : '否')
+        ];
+        el.innerHTML = 'TTS诊断:<br>' + lines.join('<br>');
+        el.className = diag.isAvailable ? 'status success' : 'status error';
+    } catch(e) {
+        el.textContent = '诊断失败: ' + e.message;
         el.className = 'status error';
     }
 });
