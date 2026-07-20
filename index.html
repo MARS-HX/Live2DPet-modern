@@ -109,6 +109,20 @@
         .lang-switcher select {
             width: auto; margin-bottom: 0; padding: 4px 8px;
         }
+        .tts-section {
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid #eee;
+        }
+        .recording-btn {
+            background: #ff5252;
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.6; }
+            100% { opacity: 1; }
+        }
     </style>
 </head>
 <body>
@@ -127,7 +141,7 @@
         <button class="tab-btn active" data-tab="settings" data-i18n="tab.settings">Settings</button>
         <button class="tab-btn" data-tab="model" data-i18n="tab.model">Model</button>
         <button class="tab-btn" data-tab="emotion" data-i18n="tab.emotion">Emotion</button>
-        <button class="tab-btn" data-tab="tts" data-i18n="tab.tts">TTS</button>
+        <button class="tab-btn" data-tab="tts" data-i18n="tab.tts">TTS & Voice</button>
         <button class="tab-btn" data-tab="prompt" data-i18n="tab.prompt">Prompt</button>
     </div>
 
@@ -314,74 +328,58 @@
     </div>
     </div>
 
-    <!-- TTS Tab -->
+    <!-- TTS & Voice Tab (使用云端 STT Mimo API) -->
     <div id="tab-tts" class="tab-content">
-    <div class="card">
-        <h2 data-i18n="tts.title">VOICEVOX TTS</h2>
-        <div class="status" id="tts-status"></div>
-        <p class="model-info" id="tts-hint" data-i18n="tts.hint">Requires voicevox_core directory. Status auto-detected on startup.</p>
-        <div style="display:flex; gap:8px; align-items:center; margin:8px 0;">
-            <button class="btn btn-primary" id="btn-setup-voicevox" data-i18n="tts.setup">One-click Install VOICEVOX</button>
-            <button class="btn btn-secondary" id="btn-restart-tts" style="display:none;" data-i18n="tts.restart">Restart TTS</button>
+        <!-- 小米 Mimo TTS 配置（精简版） -->
+        <div class="card">
+            <h2>小米 Mimo API 配置 (TTS)</h2>
+            <div class="status" id="tts-status"></div>
+            <p class="model-info" id="tts-hint">使用小米 Mimo API 进行中文语音合成，需要有效的 API Key。</p>
+            <div style="display:flex; gap:8px; align-items:center; margin:8px 0;">
+                <button class="btn btn-secondary" id="btn-restart-tts" style="display:none;" data-i18n="tts.restart">Restart TTS</button>
+            </div>
+            <label>API Base URL：</label>
+            <input type="text" id="mimo-base-url" placeholder="https://api.xiaomimimo.com/v1">
+            <label>API Key：</label>
+            <input type="password" id="mimo-api-key">
+            <label>风格描述（可选）：</label>
+            <textarea id="mimo-style-prompt" rows="3" placeholder="自然、流畅、清晰的中文语音，中性语调，速度适中。"></textarea>
+            <label>音频格式：</label>
+            <select id="mimo-format">
+                <option value="wav">WAV</option>
+                <option value="mp3">MP3</option>
+            </select>
+            <button class="btn btn-primary" id="btn-save-tts" data-i18n="tts.save">保存设置</button>
+            <div class="status" id="tts-save-status"></div>
         </div>
-        <div class="status" id="voicevox-setup-status"></div>
-        <p class="model-info" data-i18n="tts.dlNote">Requires internet. Auto-downloads Core + ONNX Runtime + Dictionary + Default voice model (~120MB).</p>
-        <div style="margin-top:8px;">
-            <label><input type="checkbox" id="tts-gpu-mode"> <span data-i18n="tts.gpu">GPU Acceleration (DirectML)</span></label>
-            <p class="model-info" data-i18n="tts.gpuNote">Requires downloading voicevox_onnxruntime-win-x64-dml-1.17.3. Restart TTS after saving.</p>
+
+        <!-- 语音输入控制（开关式连续识别）使用云端 STT（Mimo API） -->
+        <div class="card">
+            <h2>语音对话（云端 STT）</h2>
+            <div class="btn-row">
+                <button class="btn btn-primary" id="btn-voice-toggle" style="flex:1;">🎤 开始语音对话</button>
+            </div>
+            <div class="status" id="voice-status"></div>
+            <div class="model-info" id="asr-hint">使用云端语音识别（Mimo API），需在 config.json 中配置有效的 stt.baseURL 和 apiKey。点击“开始语音对话”后，将持续监听你的语音，识别后自动回复。再次点击关闭。</div>
         </div>
-    </div>
-    <div class="card">
-        <h2 data-i18n="tts.audioMode">Audio Mode</h2>
-        <div style="display:flex;gap:16px;margin:8px 0;">
-            <label><input type="radio" name="audio-mode" value="tts" checked> <span data-i18n="tts.mode.tts">TTS Voice Synthesis</span></label>
-            <label><input type="radio" name="audio-mode" value="default-audio"> <span data-i18n="tts.mode.default">Default Audio</span></label>
-            <label><input type="radio" name="audio-mode" value="silent"> <span data-i18n="tts.mode.silent">Silent</span></label>
+
+        <!-- 音频模式选择 -->
+        <div class="card">
+            <h2 data-i18n="tts.audioMode">Audio Mode</h2>
+            <div style="display:flex;gap:16px;margin:8px 0;">
+                <label><input type="radio" name="audio-mode" value="tts" checked> <span data-i18n="tts.mode.tts">TTS Voice Synthesis</span></label>
+                <label><input type="radio" name="audio-mode" value="silent"> <span data-i18n="tts.mode.silent">Silent</span></label>
+            </div>
+            <p class="model-info" id="audio-mode-hint" data-i18n="tts.modeHint">Auto fallback: TTS → Silent when unavailable.</p>
         </div>
-        <p class="model-info" id="audio-mode-hint" data-i18n="tts.modeHint">Auto fallback: TTS → Default Audio → Silent when unavailable.</p>
-    </div>
-    <div class="card">
-        <label data-i18n="tts.speaker">Speaker</label>
-        <select id="tts-speaker"></select>
-        <label data-i18n="tts.style">Style</label>
-        <select id="tts-style-id"></select>
-        <label data-i18n="tts.speed">Speed</label>
-        <input type="range" id="tts-speed" min="0.5" max="2.0" step="0.1" value="1.0">
-        <span id="tts-speed-val">1.0</span>
-        <label data-i18n="tts.pitch">Pitch</label>
-        <input type="range" id="tts-pitch" min="-0.15" max="0.15" step="0.01" value="0.0">
-        <span id="tts-pitch-val">0.0</span>
-        <label data-i18n="tts.volume">Volume</label>
-        <input type="range" id="tts-volume" min="0.0" max="2.0" step="0.1" value="1.0">
-        <span id="tts-volume-val">1.0</span>
-        <button class="btn btn-primary" id="btn-save-tts" data-i18n="tts.save">Save TTS Settings</button>
-        <div class="status" id="tts-save-status"></div>
-    </div>
-    <div class="card">
-        <h2 data-i18n="tts.test.title">Test</h2>
-        <input type="text" id="tts-test-text" data-i18n-ph="tts.test.placeholder" value="">
-        <button class="btn btn-secondary" id="btn-test-tts" data-i18n="tts.test.btn">Test Voice</button>
-        <div class="status" id="tts-test-status"></div>
-    </div>
-    <div class="card">
-        <h2 data-i18n="tts.defAudio.title">Default Audio</h2>
-        <p class="model-info" data-i18n="tts.defAudio.desc">Pre-generated filler phrases played when TTS is unavailable. Synthesized with current speaker/style.</p>
-        <label data-i18n="tts.defAudio.label">Phrase list (one per line)</label>
-        <textarea id="default-audio-phrases" rows="4" style="width:100%;font-size:12px;resize:vertical;">えっと
-うーん
-へぇ
-ふーん
-あっ</textarea>
-        <button class="btn btn-secondary" id="btn-generate-default-audio" data-i18n="tts.defAudio.gen">Generate Default Audio</button>
-        <div class="status" id="default-audio-status"></div>
-    </div>
-    <div class="card">
-        <h2 data-i18n="tts.vvm.title">Voice Model (VVM)</h2>
-        <p class="model-info" data-i18n="tts.vvm.hint">Check VVM files to load. Restart required after saving.</p>
-        <div id="vvm-checkboxes" style="max-height:200px;overflow-y:auto;margin:8px 0;"></div>
-        <button class="btn btn-primary" id="btn-save-vvm" data-i18n="tts.vvm.save">Save VVM Config (restart required)</button>
-        <div class="status" id="vvm-save-status"></div>
-    </div>
+
+        <!-- TTS 测试 -->
+        <div class="card">
+            <h2 data-i18n="tts.test.title">TTS Test</h2>
+            <input type="text" id="tts-test-text" data-i18n-ph="tts.test.placeholder" value="你好，我是你的桌面宠物">
+            <button class="btn btn-secondary" id="btn-test-tts" data-i18n="tts.test.btn">Test TTS</button>
+            <div class="status" id="tts-test-status"></div>
+        </div>
     </div>
 
     <!-- Prompt Tab -->
@@ -461,7 +459,6 @@
         <div class="status" id="prompt-status"></div>
     </div>
     </div>
-
 
     <script src="src/i18n/locales.js"></script>
     <script src="src/core/ai-chat.js"></script>
