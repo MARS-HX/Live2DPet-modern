@@ -1,315 +1,151 @@
-# Live2DPet — AI Desktop Pet Companion
+# 🐱 Live2DPet — AI Desktop Pet Companion
 
-**English** | **[日本語](README.ja.md)** | **[中文](README.md)**
+**[中文](README.md)** | **[日本語](README.ja.md)** | **English**
 
-![GitHub stars](https://img.shields.io/github/stars/x380kkm/Live2DPet) ![License](https://img.shields.io/github/license/x380kkm/Live2DPet) ![Downloads](https://img.shields.io/github/downloads/x380kkm/Live2DPet/total) ![Last Commit](https://img.shields.io/github/last-commit/x380kkm/Live2DPet)
+![License](https://img.shields.io/github/license/MARS-HX/Live2DPet-modern)
+![Electron](https://img.shields.io/badge/Electron-42.4.0-blue)
+![Live2D](https://img.shields.io/badge/Live2D-Cubism%204-ff69b4)
 
-> If you find this useful, please consider giving it a [Star](https://github.com/x380kkm/Live2DPet) :)
+> An AI-powered desktop pet companion built with Electron + Live2D. Lives on your desktop, sees what you're doing, talks with you, and remembers everything.
 
-An Electron-based desktop pet. A Live2D character stays on your desktop, understands what you're doing through screenshots and window awareness, generates companionship dialogue through AI, supports click/drag/touch interactions, uses keyframe visual memory so the AI can review your recent activity, and speaks with VOICEVOX text-to-speech. Built with AI-assisted development using [Claude Code](https://docs.anthropic.com/en/docs/claude-code).
+---
 
-> **Privacy Notice**: This app periodically captures screenshots and sends them to your configured AI API for analysis. Screenshots are never saved to disk. Make sure you trust your API provider and be mindful of sensitive information displayed on screen.
+## ✨ Features
 
-<p align="center">
-  <img src="assets/app-icon.png" width="128" alt="Live2DPet Icon">
-</p>
+### 🎭 Live2D Desktop Pet
+- Live2D Cubism 3/4 model support
+- Drag, click, and swipe interactions
+- **27+ expressions**: halo, bunny ears, star eyes, blush, anger, sleep…
+- Automatic mouse tracking
 
-## Usage Example
+### 💬 AI Chat
+- Compatible with any OpenAI-compatible API (Ollama, OpenRouter, DeepSeek…)
+- Context-aware: knows what window you're using
+- **Enhanced memory system**:
+  - 📝 Auto conversation summarization
+  - 🏷️ Topic tracking
+  - ❤️ Preference learning
+  - 👁️ Visual memory (screenshot analysis)
+  - 💡 Proactive recall
 
-<p align="center">
-  <img src="assets/example-little-demon-en.png" width="60%" alt="Usage Example 1">
-</p>
-<p align="center">
-  <img src="assets/example-kasukabe.jpg" width="60%" alt="Usage Example 2">
-</p>
-<p align="center">
-  <img src="assets/example-kiritan.png" width="60%" alt="Usage Example 3">
-</p>
+### 🎤 Voice Interaction
+- **Local STT**: Web Speech API (offline, no internet needed)
+- Cloud fallback: Mimo ASR API
+- Press & hold to talk
+- Real-time audio level indicator
 
-<details>
-<summary>Model Credits</summary>
+### 🔊 Multi-Backend TTS
 
-【Model】Little Demon<br>
-Author：Cai Cat様
+| Backend | Type | Description |
+|---------|------|-------------|
+| **Mimo** | ☁️ Cloud | Ready to use, API key required |
+| **Aliyun TTS** | ☁️ Cloud | Alibaba Cloud speech service |
+| **Local VITS2** | 🖥️ Local | Fully offline, self-hosted |
 
-【Model】春日部つむぎ (公式)<br>
-イラスト：春日部つくし様<br>
-モデリング：米田らん様
+### 🧠 Memory System
+- Persistent chat history (up to 300 messages)
+- Auto conversation summarization
+- Topic extraction and tracking
+- Preference learning (likes/dislikes/habits)
+- **Visual memory**: screenshot analysis
+- Proactive recall mechanism
 
-【Model】東北きりたん ([水德式](https://www.bilibili.com/video/BV1B7dcY1EFU))<br>
-イラスト：白白什么雨様<br>
-配布：君临德雷克様
+### 🎨 Customization
+- Character card system (multiple characters)
+- Custom name, personality, speech style
+- Expression/motion toggles
+- Adjustable detection & screenshot intervals
+- Multi-language UI (中文 / English / 日本語)
 
-*The models shown in this example are borrowed for demonstration purposes. All rights belong to the original creators.*
+---
 
-</details>
+## 🚀 Quick Start
 
-## Quick Start
+### Download & Run
+Download the latest portable release from [Releases](https://github.com/MARS-HX/Live2DPet-modern/releases), unzip and run. No runtime installation required.
 
-### Option 1: Download (Recommended)
+### First Time Setup
+1. Double-click `Live2DPet.exe`
+2. Right-click tray icon → **Settings**
+3. Configure **API URL + Key** (Ollama, OpenRouter, etc.)
+4. Import your Live2D model
+5. Click **Start**
 
-Download `Live2DPet.exe` from [Releases](https://github.com/x380kkm/Live2DPet/releases). Double-click to run — no installation needed.
+> The usage guide will open automatically on first launch
 
-### Option 2: Run from Source
-
+### From Source
 ```bash
-git clone https://github.com/x380kkm/Live2DPet.git
-cd Live2DPet
+git clone https://github.com/MARS-HX/Live2DPet-modern.git
+cd Live2DPet-modern
 npm install
-node launch.js
+npm start
 ```
 
-> In VSCode terminal, use `node launch.js` instead of `npx electron .` (ELECTRON_RUN_AS_NODE conflict).
-
-## Usage Guide
-
-### 1. Configure API
-
-Open the settings panel and fill in the "API Settings" tab with your API URL, key, and model name. This app is compatible with any OpenAI-format API endpoint. You can use aggregation platforms such as OpenRouter.
-
-Vision-capable models are recommended for screenshot awareness:
-- Budget-friendly: Grok series
-- Mid-range: GPT-o3 / GPT-5.1
-- High quality: Gemini 3 Pro Preview
-
-Translation API (for TTS Japanese translation):
-- OpenRouter `x-ai/grok-4-fast`
-
-### 2. Import Live2D Model
-
-In the "Model" tab, click "Select Model Folder" and choose a directory containing `.model.json` or `.model3.json`. The system will automatically:
-- Scan model parameters and map eye/head tracking
-- Scan expression files and motion groups
-- Copy the model to the user data directory
-
-Image folders (PNG/JPG/WebP) are also supported as character visuals — see "Image Model" below.
-
-> Don't have a Live2D model? Download free samples from the [Live2D official gallery](https://www.live2d.com/en/learn/sample/) to try it out.
-
-### 3. Configure VOICEVOX Text-to-Speech (Optional)
-
-> Visit the [VOICEVOX website](https://voicevox.hiroshiba.jp/) first to preview characters and styles, then download the model you like.
-
-1. In the "TTS" tab, install VOICEVOX components (Core + ONNX Runtime + Open JTalk dictionary)
-2. Select and download VVM voice models
-3. Click "Save & Restart" to restart the app and load the models
-4. Set the speaker, style, and fine-tune other voice parameters
-
-Supports GPU acceleration (DirectML). AI responses are auto-translated to Japanese and spoken aloud.
-
-<details>
-<summary>Manual VOICEVOX Installation</summary>
-
-If the in-app one-click install fails, you can download and place the files manually.
-
-**Install location**: `C:\Users\YourUsername\AppData\Roaming\live2dpet\voicevox_core`
-
-> Replace "YourUsername" with your Windows username.
-
-**Download links**:
-
-| Component | Required | Download |
-|-----------|----------|----------|
-| VOICEVOX Core | Yes | [voicevox_core-windows-x64-0.16.3.zip](https://github.com/VOICEVOX/voicevox_core/releases/download/0.16.3/voicevox_core-windows-x64-0.16.3.zip) |
-| ONNX Runtime (CPU) | Yes | [voicevox_onnxruntime-win-x64-1.17.3.tgz](https://github.com/VOICEVOX/onnxruntime-builder/releases/download/voicevox_onnxruntime-1.17.3/voicevox_onnxruntime-win-x64-1.17.3.tgz) |
-| ONNX Runtime (GPU) | No | [voicevox_onnxruntime-win-x64-dml-1.17.3.tgz](https://github.com/VOICEVOX/onnxruntime-builder/releases/download/voicevox_onnxruntime-1.17.3/voicevox_onnxruntime-win-x64-dml-1.17.3.tgz) |
-| Open JTalk Dictionary | Yes | [open_jtalk_dic_utf_8-1.11.tar.gz](https://sourceforge.net/projects/open-jtalk/files/Dictionary/open_jtalk_dic-1.11/open_jtalk_dic_utf_8-1.11.tar.gz/download) |
-| Default Voice Model | Yes | [0.vvm](https://github.com/VOICEVOX/voicevox_vvm/releases/download/0.16.3/0.vvm) |
-| Other Voice Models | No | [vvm](https://github.com/VOICEVOX/voicevox_vvm/releases/) |
-
-**Expected directory structure after extraction**:
-
-```
-voicevox_core/
-├── c_api/
-│   └── voicevox_core-windows-x64-0.16.3/
-│       └── lib/
-│           └── voicevox_core.dll
-├── voicevox_onnxruntime-win-x64-1.17.3/
-│   └── lib/
-│       └── voicevox_onnxruntime.dll
-├── open_jtalk_dic_utf_8-1.11/
-│   ├── sys.dic
-│   └── ...
-└── models/
-    ├── 0.vvm
-    └── ...
-```
-
-Extract downloaded files to the corresponding paths above, place `.vvm` files in the `models/` folder, then restart the app.
-
-</details>
-
-### 4. Customize Character
-
-In the "Character" tab, create a new character card and edit the character's name, personality, and behavior rules. Supports template variables `{{petName}}` and `{{userIdentity}}`.
-
-### 5. Launch Pet
-
-Click "Launch Pet" at the bottom of the settings panel. The character appears as a transparent window at the bottom-right of your desktop.
-- Drag to reposition
-- Eyes follow your mouse cursor (Live2D mode)
-- AI periodically takes screenshots and chats via speech bubbles
-
-### Image Model
-
-Besides Live2D, you can use an image folder as the character visual:
-
-1. In the "Model" tab, select type "Image Folder" and choose a folder containing PNG/JPG/WebP images
-2. Tag each image's role: idle, talking, or emotion (multiple tags allowed)
-3. Emotion images need an emotion name — the AI emotion system will match automatically
-4. Use the crop scale slider to adjust display ratio
-
-The character automatically switches to "talking" images when the AI speaks, emotion images on mood triggers, and "idle" images otherwise.
-
-## Features
-
-- **Live2D Desktop Character** — Transparent frameless window, always on top, eyes follow cursor
-- **Image Model** — Use an image folder as character, tagged by idle/talking/emotion, AI-driven auto switching
-- **AI Visual Awareness** — Periodic screenshots + active window detection, AI responds to screen content
-- **Interaction System** — Click/touch/drag/swipe/resize, interaction events injected into AI context
-- **Keyframe Visual Memory** — Auto-samples screenshots, VLM picks representative keyframes, AI can review recent activity
-- **VOICEVOX Voice** — Local Japanese TTS, auto translation, one-click setup
-- **Emotion System** — AI-driven expression/motion selection with emotion accumulation triggers
-- **Audio State Machine** — TTS → default phrases → silent, three-mode auto fallback
-- **Hot Model Import** — Any Live2D model, auto parameter mapping, auto expression/motion scan
-- **Character Personas** — JSON templates define personality and behavior rules, multi-character support
-
-> **Deprecated**: The smart enhancement text pipeline (auto search, knowledge organization, knowledge acquisition, activity memory, VLM situation extraction) has been suspended in v2.0. Code skeleton preserved.
-
-<details>
-<summary>Architecture</summary>
-
-```
-Electron Main Process
-├── main.js                 App lifecycle orchestrator, module registration
-├── src/main/               Main process modules (extracted from main.js)
-│   ├── app-context.js      Shared mutable state
-│   ├── config-manager.js   Config persistence / migration / encryption
-│   ├── crypto-utils.js     AES-256-GCM API key encryption
-│   ├── validators.js       Input validation (UUID / URL / path traversal)
-│   ├── window-manager.js   Window creation / control / chat bubble
-│   ├── character-manager.js Character card CRUD / import-export
-│   ├── tts-ipc.js          TTS synthesis / VOICEVOX setup
-│   ├── model-import.js     Model scanning / parameter mapping
-│   └── ...                 emotion / enhance / screen / tray / i18n
-├── src/core/
-│   ├── tts-service.js      VOICEVOX Core FFI (koffi)
-│   ├── translation-service.js  CN→JP LLM translation + LRU cache
-│   └── enhance/            Enhancement subsystem
-│       ├── enhancement-orchestrator.js  Orchestrator: keyframe visual memory
-│       ├── vlm-extractor.js    Screenshot capture / Mipmap / Keyframe selection
-│       ├── context-pool.js     Short-term pool + Long-term pool (Jaccard RAG) [deprecated]
-│       ├── knowledge-store.js  LLM knowledge summarization [deprecated]
-│       ├── knowledge-acquisition.js  Auto knowledge acquisition [deprecated]
-│       ├── search-service.js   Web search IPC [deprecated]
-│       └── memory-tracker.js   Activity memory tracking [deprecated]
-
-Renderer (3 windows)
-├── Settings Window         index.html + settings-ui.js
-├── Pet Window              desktop-pet.html + model-adapter.js
-└── Chat Bubble             pet-chat-bubble.html
-
-Core Modules (renderer)
-├── desktop-pet-system.js   Orchestrator: screenshots / AI requests / audio
-├── message-session.js      Coordinator: text + expression + audio sync
-├── emotion-system.js       Emotion accumulation + AI expression + motion trigger
-├── audio-state-machine.js  Three-mode fallback state machine
-├── ai-chat.js              OpenAI-compatible API client
-└── prompt-builder.js       System prompt builder (template variables)
-```
-
-</details>
-
-<details>
-<summary>Requirements</summary>
-
-- Windows 10/11
-- Node.js >= 18 (when running from source)
-- OpenAI-compatible API Key
-- VOICEVOX Core (optional, for TTS)
-
-</details>
-
-<details>
-<summary>Testing</summary>
-
+### Build
 ```bash
-npm test
+npm run build          # Portable EXE
+npm run build:dir      # Directory build (faster)
 ```
 
-</details>
+---
 
-## Notes
+## 📖 User Guide
 
-- **Privacy**: Screenshots are only sent to your configured API, never saved to disk
-- **API Costs**: Vision model calls incur costs — set a reasonable detection interval
-- **VOICEVOX**: When using voice, credit "VOICEVOX:[character name]"
+### Pet Controls
+| Action | Effect |
+|--------|--------|
+| Drag pet | Move position |
+| Click pet | Interactive chat |
+| 「−」「+」buttons | Zoom out/in |
+| 「💬」button | Open chat |
+| 「⚙」button | Open settings |
+| Right-click pet | Context menu |
 
-## Troubleshooting
+### Text Chat
+1. Click 「💬」to open chat
+2. Type and press Enter
+3. Quick reply buttons for fast chat
 
-To enable console logging for debugging, open a command prompt (cmd) and run:
+### Voice Chat
+1. Click 「🎤」button
+2. **Press & hold** to speak, release to send
+3. Auto-transcribed to text
 
-```bash
-"path\to\Live2DPet.exe" --enable-logging 2>&1
+---
+
+## 🧩 Project Structure
+
+```
+Live2DPet-modern/
+├── main.js                    # Electron main process
+├── preload.js                 # IPC bridge
+├── index.html                 # Settings page
+├── desktop-pet.html           # Pet window
+├── src/
+│   ├── core/                  # Core logic
+│   ├── main/                  # Main process IPC
+│   └── renderer/              # Renderer process
+├── assets/                    # Resources
+├── libs/                      # Live2D engine
+└── models/                    # Whisper models (optional)
 ```
 
-Please record the log output when the issue occurs and include it when submitting an Issue.
+---
 
-### Known Issues
+## 🙏 Credits
 
-- Screenshot-related warnings can be safely ignored — they do not affect normal operation
-- VVM voice model read errors: go to `C:\Users\YourUsername\AppData\Roaming\live2dpet\voicevox_core`, find the model folder, delete the corrupted files, and re-download
+- Original project: [x380kkm/Live2DPet](https://github.com/x380kkm/Live2DPet)
+- [Live2D Cubism](https://www.live2d.com/) — Model rendering engine
+- [Electron](https://www.electronjs.org/) — Desktop framework
+- [Mimo API](https://xiaomimimo.com/) — Speech services
+- [OpenRouter](https://openrouter.ai/) — AI model API
 
-<details>
-<summary>Tech Stack</summary>
+---
 
-- [Electron](https://www.electronjs.org/) — Desktop application framework
-- [Live2D Cubism SDK](https://www.live2d.com/en/sdk/about/) + [PixiJS](https://pixijs.com/) + [pixi-live2d-display](https://github.com/guansss/pixi-live2d-display)
-- [VOICEVOX Core](https://github.com/VOICEVOX/voicevox_core) — Japanese TTS engine
-- [koffi](https://koffi.dev/) — Node.js FFI
+## 📄 License
 
-</details>
+[MIT License](LICENSE)
 
-## Changelog
+---
 
-See [CHANGELOG.md](CHANGELOG.md).
-
-## License
-
-MIT — See [LICENSE](LICENSE).
-
-## Wanted
-
-- **Live2D Models**: No default model is included due to copyright — redistributable model contributions are welcome
-- **App Icon**: Currently using a developer avatar as placeholder — design submissions welcome
-- **Built-in Character Cards**: Fun character card submissions are welcome! Built-in cards must include zh/en/ja trilingual versions. To submit, modify `assets/prompts/<uuid>.json` (with `i18n` field) and `ensureDefaultCharacters()` in `src/main/character-manager.js`. See existing built-in cards for format reference
-
-<details>
-<summary>Built-in Character Cards</summary>
-
-> English and Japanese versions are machine-translated. Proofreading contributions welcome.
-
-| Character | 中文 | English | 日本語 | Note |
-|-----------|------|---------|--------|------|
-| 后辈 / Kouhai / 後輩 | ✅ Source | ✅ MT | ✅ MT | Default character, sharp-tongued kouhai desktop pet |
-
-</details>
-
-## Contributors
-
-<a href="https://github.com/x380kkm/Live2DPet/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=x380kkm/Live2DPet" />
-</a>
-
-## Sponsors
-
-See [SPONSORS.md](SPONSORS.md) for the full list.
-
-| Sponsor |
-|---------|
-| 柠檬 |
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=x380kkm/Live2DPet&type=Date)](https://star-history.com/#x380kkm/Live2DPet&Date)
+*Made with ❤️ by MARS-HX & x380kkm*
