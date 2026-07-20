@@ -1,14 +1,15 @@
 /**
- * main.js — Electron main process orchestrator.
- * All logic has been extracted into src/main/ modules.
- * This file wires them together and manages the app lifecycle.
+ * main.js — Electron main process orchestrator (without STT)
  */
-const { app, BrowserWindow, ipcMain, desktopCapturer, Menu, Tray, dialog, shell, powerMonitor } = require('electron');
+const { app, BrowserWindow, ipcMain, desktopCapturer, Menu, Tray, dialog, shell, powerMonitor, systemPreferences, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const https = require('https');
 const http = require('http');
+
+// 全局启用 Web Speech API
+app.commandLine.appendSwitch('enable-blink-features', 'SpeechRecognition');
 
 const { AppContext } = require('./src/main/app-context');
 const { createConfigManager } = require('./src/main/config-manager');
@@ -27,14 +28,12 @@ const { createPathUtils } = require('./src/utils/path-utils');
 const { TTSService } = require('./src/core/tts-service');
 const { TranslationService } = require('./src/core/translation-service');
 
-// ========== Shared State ==========
-
 const ctx = new AppContext();
 const configManager = createConfigManager(app);
 const { mt } = createI18nHelper(ctx);
 const basePath = __dirname;
 
-// ========== Register Modules ==========
+// ========== 加载 STT 服务 ==========
 
 const { createSettingsWindow } = registerWindowHandlers(ctx, ipcMain, {
     BrowserWindow, path, basePath, updateTrayMenu: () => trayManager.updateTrayMenu()
@@ -45,72 +44,93 @@ const trayManager = createTrayManager(ctx, {
 });
 
 registerScreenCapture(ctx, ipcMain, { desktopCapturer, powerMonitor });
-
-registerUtilityIPC(ctx, ipcMain, {
-    configManager, mt, Menu, shell, app, createSettingsWindow
-});
-
-registerCharacterHandlers(ctx, ipcMain, {
-    fs, path, crypto, app, dialog, configManager
-});
-
+registerUtilityIPC(ctx, ipcMain, { configManager, mt, Menu, shell, app, createSettingsWindow });
+registerCharacterHandlers(ctx, ipcMain, { fs, path, crypto, app, dialog, configManager });
 registerEmotionIPC(ctx, ipcMain);
-
-registerTTSIPC(ctx, ipcMain, {
-    configManager, fs, path, app, mt
-});
-
+registerTTSIPC(ctx, ipcMain, { configManager, fs, path, app, mt });
 registerEnhanceIPC(ctx, ipcMain, { app, fs, https, http });
+registerDefaultAudioIPC(ctx, ipcMain, { app, fs, path, configManager });
+registerModelImport(ctx, ipcMain, { app, fs, path, dialog, mt, configManager, BrowserWindow });
 
-registerDefaultAudioIPC(ctx, ipcMain, {
-    app, fs, path, configManager
+// ========== 麦克风权限（保留，但 STT 未使用） ==========
+ipcMain.handle('REQUEST_MICROPHONE_ACCESS', async () => {
+    if (process.platform === 'darwin') {
+        const status = systemPreferences.getMediaAccessStatus('microphone');
+        if (status !== 'granted') {
+            return await systemPreferences.askForMediaAccess('microphone');
+        }
+        return status === 'granted';
+    }
+    return true;
 });
 
-registerModelImport(ctx, ipcMain, {
-    app, fs, path, dialog, mt, configManager, BrowserWindow
-});
 
 // ========== App Lifecycle ==========
-
 app.whenReady().then(async () => {
+    // 自动授予媒体权限（避免弹窗）
+    session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+        callback(permission === 'media');
+    });
+
     ctx.pathUtils = createPathUtils(app, path);
     try { ctx._cachedLang = (await configManager.loadConfigFile()).uiLanguage || 'en'; } catch {}
 
+    // 初始化 TTS
     ctx.ttsService = new TTSService();
     ctx.translationService = new TranslationService();
+
     createSettingsWindow();
     trayManager.createTray();
 
-    // Initialize TTS after windows are created (non-blocking)
+    // TTS 初始化
     setImmediate(async () => {
-        const voicevoxDir = ctx.pathUtils.getVoicevoxPath();
-        if (voicevoxDir && fs.existsSync(voicevoxDir)) {
-            const config = await configManager.loadConfigFile();
-            const vvmFiles = config.tts?.vvmFiles || ['0.vvm', '8.vvm'];
-            const gpuMode = config.tts?.gpuMode || false;
-            const ok = ctx.ttsService.init(voicevoxDir, vvmFiles, { gpuMode });
-            if (ok) {
-                if (config.tts) ctx.ttsService.setConfig(config.tts);
-                if (config.apiKey) {
-                    const tl = config.translation || {};
-                    ctx.translationService.configure({
-                        apiKey: tl.apiKey || config.apiKey,
-                        baseURL: tl.baseURL || config.baseURL || 'https://openrouter.ai/api/v1',
-                        modelName: tl.modelName || config.modelName || 'x-ai/grok-4.1-fast'
-                    });
+        const config = await configManager.loadConfigFile();
+        const ttsConfig = config.tts || {};
+        const serviceType = ttsConfig.serviceType || 'voicevox';
+        let initSuccess = false;
+        if (serviceType === 'mimo') {
+            const mimoOptions = {
+                serviceType: 'mimo',
+                mimo: {
+                    baseURL: ttsConfig.mimo?.baseURL || 'https://api.xiaomimimo.com/v1',
+                    apiKey: ttsConfig.mimo?.apiKey || '',
+                    voice: ttsConfig.mimo?.voice || 'Chloe',
+                    model: ttsConfig.mimo?.model || 'mimo-v2.5-tts',
+                    format: ttsConfig.mimo?.format || 'wav',
+                    speed: ttsConfig.mimo?.speed ?? 1.0,
+                    pitch: ttsConfig.mimo?.pitch ?? 1.0,
+                    stylePrompt: ttsConfig.mimo?.stylePrompt || '小女孩、活泼、开朗、充满好奇心'
                 }
-            }
+            };
+            initSuccess = ctx.ttsService.init(mimoOptions);
+            if (initSuccess && ttsConfig.mimo) ctx.ttsService.setConfig({ mimo: ttsConfig.mimo });
         } else {
-            console.log('[TTS] voicevox_core not found, TTS disabled');
+            const voicevoxDir = ctx.pathUtils.getVoicevoxPath();
+            if (voicevoxDir && fs.existsSync(voicevoxDir)) {
+                const vvmFiles = ttsConfig.vvmFiles || ['0.vvm', '8.vvm'];
+                const gpuMode = ttsConfig.gpuMode || false;
+                initSuccess = ctx.ttsService.init(voicevoxDir, vvmFiles, { gpuMode });
+                if (initSuccess && ttsConfig) ctx.ttsService.setConfig(ttsConfig);
+            } else {
+                console.log('[TTS] voicevox_core not found, VOICEVOX TTS disabled');
+            }
+        }
+        console.log(`[TTS] ${initSuccess ? 'Initialized' : 'Not available'} with backend: ${serviceType}`);
+
+        if (config.apiKey) {
+            const tl = config.translation || {};
+            ctx.translationService.configure({
+                apiKey: tl.apiKey || config.apiKey,
+                baseURL: tl.baseURL || config.baseURL || 'https://openrouter.ai/api/v1',
+                modelName: tl.modelName || config.modelName || 'x-ai/grok-4.1-fast'
+            });
         }
     });
 });
 
 app.on('window-all-closed', () => {
-    if (ctx.tray) return;
-    if (process.platform !== 'darwin') app.quit();
+    if (!ctx.tray && process.platform !== 'darwin') app.quit();
 });
-
 app.on('before-quit', () => {
     ctx.isQuitting = true;
 });
