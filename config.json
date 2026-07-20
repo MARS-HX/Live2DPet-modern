@@ -1,6 +1,6 @@
 {
   "configVersion": 1,
-  "apiKey": "enc:v1:a7aaaa98930a2c72ceb68c2e:926ed82002f43cc7cf7dad563ef403a1:3812d4fced496f124ded3359e99f4a27cf19faea4e717974f1c4d3e67e0b12c7a21865fc4dc2f64b2843bfb9fe82efb7a9e3f8",
+  "apiKey": "enc:v1:d53da0194e2081290828195a:8ed311e5c397db92f78d0feb822b4204:44269531565e3a72911c829b0caa5c58882ce65cfd5819ac203b82ff43cbcea032b147df4df7ac222e47af6cf2c43c84c2adc9",
   "baseURL": "https://api.xiaomimimo.com/v1",
   "modelName": "mimo-v2.5",
   "interval": 90,
@@ -223,9 +223,9 @@
       "maxIntervalMs": 3600000
     },
     "vlm": {
-      "enabled": false,
-      "baseIntervalMs": 15000,
-      "maxIntervalMs": 60000,
+      "enabled": true,
+      "baseIntervalMs": 30000,
+      "maxIntervalMs": 120000,
       "minFocusSeconds": 10
     },
     "knowledgeAcq": {
@@ -265,5 +265,6 @@
     "baseURL": "",
     "apiKey": "",
     "modelName": ""
-  }
+  },
+  "screenshotInterval": 60
 }
