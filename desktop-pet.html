@@ -200,12 +200,20 @@
         <canvas id="live2d-canvas"></canvas>
         <img id="static-image" alt="pet">
         <img id="placeholder" alt="placeholder">
-        <div class="controls">
-            <button class="ctrl-btn" id="btn-smaller" title="Smaller">−</button>
-            <button class="ctrl-btn" id="btn-bigger" title="Bigger">+</button>
+        <div class="controls" id="pet-controls">
             <button class="ctrl-btn" id="btn-chat-toggle" title="Chat">💬</button>
             <button class="ctrl-btn" id="btn-settings" title="Settings">⚙</button>
             <button class="ctrl-btn" id="btn-close" title="Close">✕</button>
+        </div>
+        <!-- Canvas Y 实时调整 -->
+        <div id="canvas-y-adjust" style="position:absolute;bottom:32px;left:50%;transform:translateX(-50%);z-index:50;display:none;align-items:center;gap:4px;background:rgba(255,255,255,0.7);backdrop-filter:blur(8px);border-radius:8px;padding:2px 8px;-webkit-app-region:no-drag;">
+            <span id="canvas-y-label" style="font-size:9px;color:#999;white-space:nowrap;">Y:</span>
+            <input type="range" id="canvas-y-slider-live" min="0.3" max="0.9" step="0.01" value="0.60" style="width:60px;height:3px;margin:0;padding:0;vertical-align:middle;">
+            <span id="canvas-y-value" style="font-size:9px;color:#666;min-width:30px;">0.60</span>
+        </div>
+        <!-- 右下角缩放把手 -->
+        <div id="resize-handle" style="position:absolute;right:0;bottom:0;width:16px;height:16px;z-index:100;cursor:nwse-resize;-webkit-app-region:no-drag;display:none;">
+            <svg viewBox="0 0 16 16" style="width:100%;height:100%;"><path d="M16 0v16H0" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="2"/></svg>
         </div>
         <!-- 聊天框（可拖动 + 多模式） -->
         </div>
@@ -510,6 +518,63 @@
                 window.electronAPI.createChatWindow();
             }
         });
+
+        // 监听来自设置页的 Canvas Y 变更
+        if (window.electronAPI?.onSetCanvasY) {
+            window.electronAPI.onSetCanvasY((val) => {
+                const slider = document.getElementById('canvas-y-slider-live');
+                const label = document.getElementById('canvas-y-value');
+                if (slider) { slider.value = val; label.textContent = val.toFixed(2); }
+                if (currentAdapter && currentAdapter.setCanvasY) currentAdapter.setCanvasY(val);
+            });
+        }
+
+        // ===== Canvas Y 实时调整 =====
+        (function() {
+            const slider = document.getElementById('canvas-y-slider-live');
+            const label = document.getElementById('canvas-y-value');
+            const adjuster = document.getElementById('canvas-y-adjust');
+            if (!slider || !adjuster) return;
+            const container = document.getElementById('pet-container');
+            let hideTimer = null;
+            container.addEventListener('mouseenter', () => { adjuster.style.display = 'flex'; });
+            container.addEventListener('mouseleave', () => { hideTimer = setTimeout(() => { adjuster.style.display = 'none'; }, 2000); });
+            adjuster.addEventListener('mouseenter', () => { clearTimeout(hideTimer); });
+            slider.addEventListener('input', async () => {
+                const val = parseFloat(slider.value);
+                label.textContent = val.toFixed(2);
+                if (window.electronAPI) {
+                    await window.electronAPI.setCanvasY(val);
+                    const cfg = await window.electronAPI.loadConfig();
+                    if (cfg.model) { cfg.model.canvasYRatio = val; await window.electronAPI.saveConfig({ model: cfg.model }); }
+                }
+                if (currentAdapter && currentAdapter.setCanvasY) currentAdapter.setCanvasY(val);
+            });
+            // 加载保存的值
+            (async () => {
+                try { const cfg = await window.electronAPI?.loadConfig(); if (cfg?.model?.canvasYRatio) { slider.value = cfg.model.canvasYRatio; label.textContent = cfg.model.canvasYRatio.toFixed(2); } } catch(e) {}
+            })();
+        })();
+
+        // ===== 自由缩放（右下角拖拽） =====
+        (function() {
+            const handle = document.getElementById('resize-handle');
+            const container = document.getElementById('pet-container');
+            if (!handle || !window.electronAPI) return;
+            container.addEventListener('mouseenter', () => { handle.style.display = 'block'; });
+            container.addEventListener('mouseleave', () => { handle.style.display = 'none'; });
+            handle.addEventListener('mouseenter', () => { handle.style.display = 'block'; });
+            let isResizing = false, startX, startY, startW, startH;
+            handle.addEventListener('mousedown', async (e) => {
+                e.preventDefault(); e.stopPropagation();
+                isResizing = true; startX = e.screenX; startY = e.screenY;
+                const b = await window.electronAPI.getWindowBounds();
+                startW = b.width; startH = b.height;
+                const onMove = (ev) => { if (!isResizing) return; window.electronAPI.setWindowSize(Math.max(150, startW + (ev.screenX - startX)), Math.max(150, startH + (ev.screenY - startY))); };
+                const onUp = () => { isResizing = false; document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+                document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
+            });
+        })();
 
         initModel();
         console.log('[DesktopPet] Window loaded');

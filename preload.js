@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     setWindowSize: (w, h) => ipcRenderer.invoke('set-window-size', w, h),
     setWindowPosition: (x, y, w, h) => ipcRenderer.invoke('set-window-position', x, y, w, h),
     getWindowBounds: () => ipcRenderer.invoke('get-window-bounds'),
+    setCanvasY: (val) => ipcRenderer.invoke('set-canvas-y', val),
+    onSetCanvasY: (callback) => ipcRenderer.on('set-canvas-y', (_, val) => callback(val)),
     getWindowPosition: () => ipcRenderer.invoke('get-window-position'),
 
     // Chat bubble

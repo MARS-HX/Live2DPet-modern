@@ -281,6 +281,18 @@ function registerWindowHandlers(ctx, ipcMain, deps) {
         }
     });
 
+    // ---- 实时调整 Canvas Y 锚点 ----
+    ipcMain.handle('set-canvas-y', async (event, val) => {
+        try {
+            if (ctx.petWindow && !ctx.petWindow.isDestroyed()) {
+                ctx.petWindow.webContents.send('set-canvas-y', val);
+            }
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    });
+
     return { createSettingsWindow };
 }
 
