@@ -203,7 +203,7 @@ Live2DPet-modern/
 - **多后端 TTS**：Mimo / 阿里云 / 本地 VITS2
 - **增强记忆系统**：自动总结、话题追踪、偏好学习、视觉记忆
 
-### v2.0.0 — Interaction & Visual Memory
+### v1.0.0 — Interaction & Visual Memory
 - 互动系统、关键帧视觉记忆、反重复机制
 
 ---
