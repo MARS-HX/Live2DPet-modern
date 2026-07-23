@@ -119,6 +119,7 @@ body.dark #chat-input::placeholder { color:#888; }
             <select id="preset-select" style="display:none;font-size:10px;padding:1px 4px;border:1px solid #ddd;border-radius:4px;max-width:80px;">
                 <option value="">预设</option>
             </select>
+            <span id="tts-toggle-tavern" style="display:none;font-size:12px;cursor:pointer;padding:2px 6px;border-radius:4px;background:#e8f5e9;color:#2e7d32;" title="点击切换TTS">🔊</span>
             <button class="ctrl-btn" id="btn-close" title="关闭">✕</button>
         </span>
     </div>
@@ -250,6 +251,7 @@ document.getElementById('mode-toggle').addEventListener('click', async () => {
         icon.textContent = '🏰';
         document.getElementById('chat-messages').innerHTML = '';
         document.getElementById('preset-select').style.display = '';
+        document.getElementById('tts-toggle-tavern').style.display = '';
         loadPresetDropdown();
         
         if (!diaryStore && typeof ConversationStore !== 'undefined') {
@@ -264,6 +266,22 @@ document.getElementById('mode-toggle').addEventListener('click', async () => {
                 appendMessage('ai', '📜 上次冒险日记：' + last.summary.slice(0, 100));
             }
         }
+        // TTS 开关（酒馆模式）
+        let tavernTTSEnabled = localStorage.getItem('live2dpet_tavern_tts') !== 'off';
+        const ttsBtn = document.getElementById('tts-toggle-tavern');
+        if (ttsBtn) {
+            ttsBtn.textContent = tavernTTSEnabled ? '🔊' : '🔇';
+            ttsBtn.style.background = tavernTTSEnabled ? '#e8f5e9' : '#ffebee';
+            ttsBtn.style.color = tavernTTSEnabled ? '#2e7d32' : '#c62828';
+            ttsBtn.onclick = () => {
+                tavernTTSEnabled = !tavernTTSEnabled;
+                ttsBtn.textContent = tavernTTSEnabled ? '🔊' : '🔇';
+                ttsBtn.style.background = tavernTTSEnabled ? '#e8f5e9' : '#ffebee';
+                ttsBtn.style.color = tavernTTSEnabled ? '#2e7d32' : '#c62828';
+                localStorage.setItem('live2dpet_tavern_tts', tavernTTSEnabled ? 'on' : 'off');
+            };
+        }
+        
         // 加载当前预设
         try {
             const saved = localStorage.getItem('live2dpet_current_preset');
@@ -287,6 +305,7 @@ document.getElementById('mode-toggle').addEventListener('click', async () => {
         label.textContent = '陪伴模式';
         icon.textContent = '🐱';
         document.getElementById('preset-select').style.display = 'none';
+                document.getElementById('tts-toggle-tavern').style.display = 'none';
         document.getElementById('chat-messages').innerHTML = '';
         if (window.__chatStore) {
             const recent = window.__chatStore.history.slice(-20);
@@ -487,7 +506,7 @@ async function sendMessage(text) {
             showTyping(false);
             appendMessage('ai', reply);
             await diaryStore.add('assistant', reply);
-            if (window.electronAPI?.ttsSynthesize) {
+            if (window.electronAPI?.ttsSynthesize && tavernTTSEnabled) {
                 try { const t = await window.electronAPI.ttsSynthesize(reply); if(t?.success) new Audio('data:audio/wav;base64,'+t.wav).play().catch(()=>{}); } catch(e){}
             }
         } catch(e) { showTyping(false); appendMessage('ai', '😅 ' + e.message); }
@@ -533,7 +552,7 @@ const recent = diaryStore.history.slice(-20).map(m => (m.role==='user'?userLabel
             const popup = document.createElement('div');
             popup.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);z-index:999;display:flex;justify-content:center;align-items:center;';
             const box = document.createElement('div');
-            box.style.cssText = 'background:white;border-radius:16px;padding:24px;max-width:360px;font-size:13px;line-height:1.8;box-shadow:0 8px 32px rgba(0,0,0,0.2);';
+            box.style.cssText = 'background:white;border-radius:16px;padding:24px;max-width:400px;max-height:70vh;overflow-y:auto;font-size:13px;line-height:1.8;box-shadow:0 8px 32px rgba(0,0,0,0.2);';
             box.innerHTML = '<h3 style="color:#e75480;margin-bottom:12px;text-align:center;">📜 冒险日记</h3><p>' + diary.replace(/\\n/g, '<br>') + '</p><button style="display:block;margin:16px auto 0;padding:6px 24px;border:none;border-radius:20px;background:#e75480;color:white;cursor:pointer;">已阅</button>';
             popup.appendChild(box);
             document.body.appendChild(popup);
