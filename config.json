@@ -1,6 +1,6 @@
 {
   "configVersion": 1,
-  "apiKey": "enc:v1:955249d78487ab60e94280f8:fefde236488207b1c25370e5a597b445:cb85aac407649b8fe0377679f47b3e015b67d1931a47f70bb31f6354fa1bcec70b63030be1a2ed65b3f13efe3bb89288b94a82",
+  "apiKey": "enc:v1:3a7dbef3c03e9bc1225ae302:29691857e8de0f523fdc7565ce68f8ce:f43276a28c326ef33d43d1e09d2a451c16b283fdcd12ba4790ab691873e1afece5e82eee724ced8d5ba0cf379bb713518334a9",
   "baseURL": "https://api.xiaomimimo.com/v1",
   "modelName": "mimo-v2.5",
   "interval": 90,
