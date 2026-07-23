@@ -174,7 +174,7 @@ async function sendMessage(text) {
 document.getElementById('btn-send').addEventListener('click', () => sendMessage(document.getElementById('chat-input').value));
 document.getElementById('chat-input').addEventListener('keydown', (e) => { if(e.key==='Enter'&&!e.shiftKey) { e.preventDefault(); sendMessage(e.target.value); }});
 document.getElementById('btn-close').addEventListener('click', () => window.close());
-document.getElementById('btn-minimize').addEventListener('click', () => window.electronAPI?.minimizeWindow?.());
+document.getElementById('btn-minimize').addEventListener('click', () => { try { window.close(); } catch(e) {} });
 
 init();
 </script>

@@ -504,7 +504,13 @@
             }
         })();
 
-        // 聊天系统已迁移到独立窗口 (pet-chat-window.html)
+        // 聊天按钮 → 打开独立窗口
+        document.getElementById('btn-chat-toggle').addEventListener('click', () => {
+            if (window.electronAPI?.createChatWindow) {
+                window.electronAPI.createChatWindow();
+            }
+        });
+
         initModel();
         console.log('[DesktopPet] Window loaded');
     </script>
