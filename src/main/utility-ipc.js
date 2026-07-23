@@ -91,7 +91,8 @@ function registerUtilityIPC(ctx, ipcMain, deps) {
         try {
             const { execSync } = require('child_process');
             // 先试 .NET System.Speech，不行再试 COM SAPI
-            const psScript = `try {
+            const psScript = `[Console]::OutputEncoding = [Text.Encoding]::UTF8
+try {
   Add-Type -AssemblyName System.Speech
   $recognizer = New-Object System.Speech.Recognition.SpeechRecognitionEngine
   $recognizer.SetInputToDefaultAudioDevice()
