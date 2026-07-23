@@ -1391,3 +1391,184 @@ loadSTTConfig();
 
 // Final: load TTS status after all DOM is ready
 loadTTSStatus();
+
+// ========== 酒馆预设管理 ==========
+const BUILTIN_PRESETS = ['fantasy-tavern', 'cyber-bar', 'xianxia-tavern'];
+
+function loadPresetList() {
+    const sel = document.getElementById('preset-selector');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">-- 选择预设 --</option>';
+    
+    // 内置预设
+    for (const name of BUILTIN_PRESETS) {
+        const opt = document.createElement('option');
+        opt.value = '__builtin__' + name;
+        opt.textContent = '📦 ' + name;
+        sel.appendChild(opt);
+    }
+    // 用户预设
+    try {
+        const userPresets = JSON.parse(localStorage.getItem('live2dpet_presets') || '[]');
+        for (const p of userPresets) {
+            if (p && p.name) {
+                const opt = document.createElement('option');
+                opt.value = '__user__' + p.name;
+                opt.textContent = '⭐ ' + p.name;
+                sel.appendChild(opt);
+            }
+        }
+    } catch(e) {}
+}
+
+// 获取预设数据
+async function getPresetData(value) {
+    if (value.startsWith('__builtin__')) {
+        const name = value.replace('__builtin__', '');
+        try {
+            const res = await fetch('presets/' + name + '.json');
+            if (res.ok) return await res.json();
+        } catch(e) {}
+        return null;
+    }
+    if (value.startsWith('__user__')) {
+        const name = value.replace('__user__', '');
+        const userPresets = JSON.parse(localStorage.getItem('live2dpet_presets') || '[]');
+        return userPresets.find(p => p.name === name) || null;
+    }
+    return null;
+}
+
+// 选择预设
+document.getElementById('preset-selector')?.addEventListener('change', async (e) => {
+    if (!e.target.value) return;
+    const preset = await getPresetData(e.target.value);
+    if (!preset) return;
+    fillPresetEditor(preset);
+    document.getElementById('preset-editor').style.display = 'block';
+});
+
+function fillPresetEditor(preset) {
+    document.getElementById('pe-name').value = preset.name || '';
+    document.getElementById('pe-desc').value = preset.description || '';
+    document.getElementById('pe-user-role').value = preset.userRole || '冒险者';
+    document.getElementById('pe-ai-role').value = preset.aiRole || '酒馆老板';
+    document.getElementById('pe-greeting').value = preset.greeting || '';
+    document.getElementById('pe-system-prompt').value = preset.systemPrompt || '';
+    document.getElementById('pe-world').value = preset.worldBuilding || '';
+    document.getElementById('pe-diary-prompt').value = preset.diaryPrompt || '';
+}
+
+function readPresetFromForm() {
+    return {
+        name: document.getElementById('pe-name').value || '未命名',
+        description: document.getElementById('pe-desc').value || '',
+        version: 1,
+        author: '用户自定义',
+        systemPrompt: document.getElementById('pe-system-prompt').value || '',
+        userRole: document.getElementById('pe-user-role').value || '冒险者',
+        aiRole: document.getElementById('pe-ai-role').value || '酒馆老板',
+        greeting: document.getElementById('pe-greeting').value || '',
+        diaryPrompt: document.getElementById('pe-diary-prompt').value || '',
+        worldBuilding: document.getElementById('pe-world').value || ''
+    };
+}
+
+// 新建预设
+document.getElementById('btn-preset-new')?.addEventListener('click', () => {
+    fillPresetEditor({ name: '', description: '', userRole: '冒险者', aiRole: '酒馆老板', greeting: '', systemPrompt: '', worldBuilding: '', diaryPrompt: '' });
+    document.getElementById('preset-editor').style.display = 'block';
+});
+
+// 保存预设
+document.getElementById('btn-preset-save')?.addEventListener('click', () => {
+    const preset = readPresetFromForm();
+    if (!preset.name) { showStatus('preset-status', '请输入预设名称', 'error'); return; }
+    try {
+        const userPresets = JSON.parse(localStorage.getItem('live2dpet_presets') || '[]');
+        const idx = userPresets.findIndex(p => p.name === preset.name);
+        if (idx >= 0) userPresets[idx] = preset;
+        else userPresets.push(preset);
+        localStorage.setItem('live2dpet_presets', JSON.stringify(userPresets));
+        showStatus('preset-status', '预设 "' + preset.name + '" 已保存！', 'success');
+        loadPresetList();
+    } catch(e) { showStatus('preset-status', '保存失败: ' + e.message, 'error'); }
+});
+
+// 取消编辑
+document.getElementById('btn-preset-cancel')?.addEventListener('click', () => {
+    document.getElementById('preset-editor').style.display = 'none';
+});
+
+// 导出预设
+document.getElementById('btn-preset-export')?.addEventListener('click', async () => {
+    const sel = document.getElementById('preset-selector');
+    if (!sel.value) return;
+    const preset = await getPresetData(sel.value);
+    if (!preset) return;
+    const blob = new Blob([JSON.stringify(preset, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = (preset.name || 'tavern-preset') + '.json';
+    a.click();
+    URL.revokeObjectURL(url);
+});
+
+// 导入预设
+document.getElementById('btn-preset-import')?.addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        try {
+            const text = await file.text();
+            const preset = JSON.parse(text);
+            if (!preset.name || !preset.systemPrompt) {
+                showStatus('preset-status', '无效的预设文件！', 'error');
+                return;
+            }
+            const userPresets = JSON.parse(localStorage.getItem('live2dpet_presets') || '[]');
+            userPresets.push(preset);
+            localStorage.setItem('live2dpet_presets', JSON.stringify(userPresets));
+            loadPresetList();
+            fillPresetEditor(preset);
+            document.getElementById('preset-editor').style.display = 'block';
+            showStatus('preset-status', '预设 "' + preset.name + '" 已导入！', 'success');
+        } catch(err) {
+            showStatus('preset-status', '导入失败: ' + err.message, 'error');
+        }
+    };
+    input.click();
+});
+
+// 删除预设
+document.getElementById('btn-preset-delete')?.addEventListener('click', () => {
+    const sel = document.getElementById('preset-selector');
+    if (!sel.value || !sel.value.startsWith('__user__')) return;
+    const name = sel.value.replace('__user__', '');
+    try {
+        let userPresets = JSON.parse(localStorage.getItem('live2dpet_presets') || '[]');
+        userPresets = userPresets.filter(p => p.name !== name);
+        localStorage.setItem('live2dpet_presets', JSON.stringify(userPresets));
+        loadPresetList();
+        document.getElementById('preset-editor').style.display = 'none';
+        showStatus('preset-status', '已删除', 'success');
+    } catch(e) { showStatus('preset-status', '删除失败', 'error'); }
+});
+
+// 应用预设
+document.getElementById('btn-preset-apply')?.addEventListener('click', async () => {
+    const sel = document.getElementById('preset-selector');
+    if (!sel.value) return;
+    const preset = await getPresetData(sel.value);
+    if (!preset) return;
+    // 保存到 localStorage 作为当前使用的预设
+    localStorage.setItem('live2dpet_current_preset', JSON.stringify(preset));
+    showStatus('preset-status', '预设 "' + preset.name + '" 已应用，打开酒馆模式即可使用！', 'success');
+});
+
+// 页面加载时初始化预设列表
+loadPresetList();

@@ -143,6 +143,7 @@
         <button class="tab-btn" data-tab="emotion" data-i18n="tab.emotion">Emotion</button>
         <button class="tab-btn" data-tab="tts" data-i18n="tab.tts">TTS & Voice</button>
         <button class="tab-btn" data-tab="prompt" data-i18n="tab.prompt">Prompt</button>
+        <button class="tab-btn" data-tab="tavern">🏰 酒馆</button>
     </div>
 
     <!-- Settings Tab -->
@@ -512,6 +513,45 @@
 
     <script src="src/i18n/locales.js"></script>
     <script src="src/core/ai-chat.js"></script>
+    <!-- 酒馆预设配置 -->
+    <div id="tab-tavern" class="tab-content">
+        <div class="card">
+            <h2>🏰 酒馆模式预设管理</h2>
+            <p style="font-size:12px;color:#888;margin-bottom:8px;">管理酒馆模式的世界观、角色和对话设定。</p>
+            <div style="display:flex;gap:6px;margin-bottom:12px;">
+                <button class="btn btn-primary" id="btn-preset-new">➕ 新建预设</button>
+                <button class="btn btn-secondary" id="btn-preset-import">📥 导入 JSON</button>
+            </div>
+            <div id="preset-list" style="margin-bottom:12px;">
+                <label>已保存的预设：</label>
+                <select id="preset-selector" style="width:100%;margin-bottom:6px;">
+                    <option value="">-- 选择预设 --</option>
+                </select>
+                <div style="display:flex;gap:6px;">
+                    <button class="btn btn-secondary btn-sm" id="btn-preset-apply">应用</button>
+                    <button class="btn btn-secondary btn-sm" id="btn-preset-edit">编辑</button>
+                    <button class="btn btn-secondary btn-sm" id="btn-preset-export">导出</button>
+                    <button class="btn btn-danger btn-sm" id="btn-preset-delete">删除</button>
+                </div>
+            </div>
+            <div id="preset-editor" style="display:none;border-top:1px solid #eee;padding-top:12px;margin-top:8px;">
+                <h3 style="font-size:14px;color:#e75480;margin-bottom:8px;">✏️ 编辑预设</h3>
+                <label>名称</label><input type="text" id="pe-name" style="width:100%;margin-bottom:6px;">
+                <label>描述</label><input type="text" id="pe-desc" style="width:100%;margin-bottom:6px;">
+                <label>你的角色</label><input type="text" id="pe-user-role" value="冒险者" style="width:100%;margin-bottom:6px;">
+                <label>AI 角色</label><input type="text" id="pe-ai-role" value="酒馆老板" style="width:100%;margin-bottom:6px;">
+                <label>开场白</label><input type="text" id="pe-greeting" style="width:100%;margin-bottom:6px;">
+                <label>AI 人格设定</label><textarea id="pe-system-prompt" rows="3" style="width:100%;margin-bottom:6px;"></textarea>
+                <label>世界观</label><textarea id="pe-world" rows="3" style="width:100%;margin-bottom:6px;"></textarea>
+                <label>日记提示词</label><textarea id="pe-diary-prompt" rows="2" style="width:100%;margin-bottom:6px;"></textarea>
+                <div style="display:flex;gap:6px;margin-top:8px;">
+                    <button class="btn btn-primary" id="btn-preset-save">💾 保存</button>
+                    <button class="btn btn-secondary" id="btn-preset-cancel">取消</button>
+                </div>
+                <div class="status" id="preset-status"></div>
+            </div>
+        </div>
+    </div>
     <script src="src/core/prompt-builder.js"></script>
     <script src="src/core/emotion-system.js"></script>
     <script src="src/core/audio-state-machine.js"></script>

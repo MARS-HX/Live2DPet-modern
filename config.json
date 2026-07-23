@@ -1,6 +1,6 @@
 {
   "configVersion": 1,
-  "apiKey": "enc:v1:e0a8a0704b5fe85aebbfc603:98f0c1099f93f907b8d803c2f6ae7ccc:6b4333a1f2e453b8f4950fec49297459a5f0f016ab7d4ba544b818c9b1c06f4d5cfd68a54fff1f552891a4bceab8cae6add79d",
+  "apiKey": "enc:v1:c00898b7f3e467399c316431:1387dc788dad15921e55d849c3989535:9f2340e5d5c9a9c5e85ffe207d35fc9ededbee21f29c8f8f7808a185bf852ee62dfbcd1633ae0aab6549f36e6bf677edc68ed6",
   "baseURL": "https://api.xiaomimimo.com/v1",
   "modelName": "mimo-v2.5",
   "interval": 90,
@@ -266,5 +266,6 @@
     "apiKey": "",
     "modelName": ""
   },
-  "screenshotInterval": 60
+  "screenshotInterval": 60,
+  "appMode": "tavern"
 }
