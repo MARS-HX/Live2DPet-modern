@@ -329,11 +329,32 @@ document.getElementById('btn-mic').addEventListener('mousedown', (e) => {
         stopVoice();
     };
     
-    recognition.onerror = (event) => {
-        if (event.error !== 'aborted') {
+    recognition.onerror = async (event) => {
+        if (event.error === 'network' || event.error === 'service-not-allowed') {
+            // Web Speech 失败 → 尝试 Mimo 云端 STT
+            stopVoice();
+            appendMessage('ai', '🔄 本地语音不可用，尝试云端识别...');
+            try {
+                if (window.electronAPI?.loadConfig) {
+                    const cfg = await window.electronAPI.loadConfig();
+                    const stt = cfg.stt || {};
+                    if (stt.apiKey) {
+                        const text = await transcribeViaMimo(stt);
+                        if (text) {
+                            document.getElementById('chat-input').value = text;
+                            sendMessage(text);
+                            return;
+                        }
+                    }
+                }
+            } catch(e) {}
+            appendMessage('ai', '😅 语音识别失败（网络错误），请检查网络连接或配置云端 STT');
+        } else if (event.error !== 'aborted') {
             appendMessage('ai', '😅 语音识别失败: ' + event.error);
+            stopVoice();
+        } else {
+            stopVoice();
         }
-        stopVoice();
     };
     
     recognition.onend = () => { stopVoice(); };
@@ -349,6 +370,89 @@ document.getElementById('btn-mic').addEventListener('mouseup', (e) => {
 document.getElementById('btn-mic').addEventListener('mouseleave', () => {
     if (isRecording) stopVoice();
 });
+
+// Mimo 云端语音识别（Web Speech 失败时备用）
+async function transcribeViaMimo(sttConfig) {
+    try {
+        // 获取录音权限并录音
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+        const chunks = [];
+        
+        return new Promise((resolve) => {
+            mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+            mediaRecorder.onstop = async () => {
+                stream.getTracks().forEach(t => t.stop());
+                const blob = new Blob(chunks, { type: 'audio/webm' });
+                
+                // webm 转 wav
+                const wavBlob = await webmToWav(blob);
+                const buffer = await wavBlob.arrayBuffer();
+                const bytes = new Uint8Array(buffer);
+                let binary = '';
+                for (let i = 0; i < bytes.length; i += 8192) {
+                    binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + 8192, bytes.length)));
+                }
+                const base64 = btoa(binary);
+                const audioDataUrl = 'data:audio/wav;base64,' + base64;
+                
+                try {
+                    const baseURL = (sttConfig.baseURL || 'https://api.xiaomimimo.com/v1').replace(/\/audio\/transcriptions$/, '');
+                    const res = await fetch(baseURL.replace(/\/$/, '') + '/chat/completions', {
+                        method: 'POST',
+                        headers: { 'Authorization': 'Bearer ' + (sttConfig.apiKey || ''), 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            model: sttConfig.model || 'mimo-v2.5-asr',
+                            messages: [{ role: 'user', content: [{ type: 'input_audio', input_audio: { data: audioDataUrl } }] }],
+                            asr_options: { language: sttConfig.language || 'zh' }
+                        })
+                    });
+                    if (res.ok) {
+                        const result = await res.json();
+                        resolve(result?.choices?.[0]?.message?.content?.trim() || '');
+                    } else resolve('');
+                } catch(e) { resolve(''); }
+            };
+            
+            mediaRecorder.start();
+            setTimeout(() => { if (mediaRecorder.state !== 'inactive') mediaRecorder.stop(); }, 5000);
+        });
+    } catch(e) { return ''; }
+}
+
+// webm → wav 转换
+async function webmToWav(webmBlob) {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const arrayBuffer = await webmBlob.arrayBuffer();
+    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+    const numChannels = audioBuffer.numberOfChannels;
+    const sampleRate = audioBuffer.sampleRate;
+    const length = audioBuffer.length;
+    const pcmData = new Float32Array(length * numChannels);
+    for (let ch = 0; ch < numChannels; ch++) {
+        const cd = audioBuffer.getChannelData(ch);
+        for (let i = 0; i < length; i++) pcmData[i * numChannels + ch] = cd[i];
+    }
+    const pcm16 = new Int16Array(pcmData.length);
+    for (let i = 0; i < pcmData.length; i++) {
+        const s = Math.max(-1, Math.min(1, pcmData[i]));
+        pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+    }
+    const dataSize = pcm16.length * 2;
+    const buf = new ArrayBuffer(44 + dataSize);
+    const v = new DataView(buf);
+    const ws = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+    ws(0, 'RIFF'); v.setUint32(4, 36 + dataSize, true);
+    ws(8, 'WAVE'); ws(12, 'fmt ');
+    v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+    v.setUint16(22, numChannels, true); v.setUint32(24, sampleRate, true);
+    v.setUint32(28, sampleRate * numChannels * 2, true);
+    v.setUint16(32, numChannels * 2, true); v.setUint16(34, 16, true);
+    ws(36, 'data'); v.setUint32(40, dataSize, true);
+    new Int16Array(buf, 44).set(pcm16);
+    audioCtx.close();
+    return new Blob([buf], { type: 'audio/wav' });
+}
 
 function stopVoice() {
     if (recognition) {
