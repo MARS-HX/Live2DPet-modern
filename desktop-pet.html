@@ -239,8 +239,6 @@
     <script src="src/core/conversation-store.js"></script>
     <script src="src/renderer/model-adapter.js"></script>
     <script>
-        const sizePresets = [200, 300, 400, 500];
-        let currentSizeIndex = 1;
         let currentAdapter = null;
         let trackX = 0, trackY = 0;
 
@@ -305,29 +303,6 @@
         });
 
         // ========== Controls ==========
-        function updateSizeBtns() {
-            document.getElementById('btn-smaller').disabled = (currentSizeIndex <= 0);
-            document.getElementById('btn-bigger').disabled = (currentSizeIndex >= sizePresets.length - 1);
-        }
-        updateSizeBtns();
-
-        document.getElementById('btn-smaller').addEventListener('click', () => {
-            if (currentSizeIndex <= 0) return;
-            currentSizeIndex--;
-            const size = sizePresets[currentSizeIndex];
-            if (window.electronAPI) window.electronAPI.setWindowSize(size, size);
-            updateSizeBtns();
-            reportInteraction('resize', 'body', 0, { size });
-        });
-
-        document.getElementById('btn-bigger').addEventListener('click', () => {
-            if (currentSizeIndex >= sizePresets.length - 1) return;
-            currentSizeIndex++;
-            const size = sizePresets[currentSizeIndex];
-            if (window.electronAPI) window.electronAPI.setWindowSize(size, size);
-            updateSizeBtns();
-            reportInteraction('resize', 'body', 0, { size });
-        });
 
         document.getElementById('btn-settings').addEventListener('click', () => {
             if (window.electronAPI) window.electronAPI.showSettings();
@@ -344,13 +319,6 @@
         });
 
         // Listen for size changes from context menu
-        if (window.electronAPI && window.electronAPI.onSizeChanged) {
-            window.electronAPI.onSizeChanged((size) => {
-                currentSizeIndex = sizePresets.indexOf(size);
-                if (currentSizeIndex < 0) currentSizeIndex = 1;
-                updateSizeBtns();
-            });
-        }
 
         // ========== Expression System (via Adapter) ==========
         if (window.electronAPI && window.electronAPI.onPlayExpression) {
