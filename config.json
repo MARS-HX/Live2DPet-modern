@@ -1,8 +1,8 @@
 {
   "configVersion": 1,
-  "apiKey": "enc:v1:df8eef2a9f66ad3c8270a12e:a860da974d884ac3f3735c691bc1c71c:0dd8b34c1442682b614af0feabff199f6504a9baa489c79d0e63847e89263cf3074e78cd219a21da5792582b9c43e1c55c9464",
-  "baseURL": "https://api.xiaomimimo.com/v1",
-  "modelName": "mimo-v2.5",
+  "apiKey": "",
+  "baseURL": "http://localhost:11434/v1",
+  "modelName": "qwen3.5:2b",
   "interval": 90,
   "chatGap": 5,
   "emotionFrequency": 30,
@@ -37,11 +37,11 @@
   ],
   "maxTokensMultiplier": 1,
   "model": {
-    "type": "live2d",
-    "folderPath": "D:\\BaiduNetdiskDownload\\Sea hare",
-    "modelJsonFile": "Sea hare.model3.json",
+    "type": "none",
+    "folderPath": "",
+    "modelJsonFile": "",
     "copyToUserData": true,
-    "userDataModelPath": "models\\Sea hare",
+    "userDataModelPath": "",
     "staticImagePath": null,
     "bottomAlignOffset": 0.5,
     "gifExpressions": {},
@@ -202,7 +202,7 @@
   "bubble": {
     "frameImagePath": ""
   },
-  "appIcon": "C:\\Users\\chenh\\AppData\\Roaming\\live2dpet\\app-icon.png",
+  "appIcon": null,
   "enhance": {
     "enabled": true,
     "memory": {
@@ -264,5 +264,6 @@
   },
   "screenshotInterval": 60,
   "appMode": "tavern",
-  "firstRun": true
+  "firstRun": true,
+  "canvasYRatio": 0.6
 }
