@@ -301,75 +301,50 @@ document.getElementById('mode-toggle').addEventListener('click', async () => {
 let isRecording = false;
 let recognition = null;
 
-document.getElementById('btn-mic').addEventListener('mousedown', (e) => {
+document.getElementById('btn-mic').addEventListener('mousedown', async (e) => {
     e.preventDefault();
     if (isRecording) return;
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-        appendMessage('ai', '😅 浏览器不支持语音识别');
-        return;
-    }
     
     isRecording = true;
     document.getElementById('btn-mic').classList.add('listening');
     document.getElementById('btn-mic').textContent = '🔴';
+    appendMessage('ai', '🎤 正在听...');
     
-    recognition = new SpeechRecognition();
-    recognition.lang = 'zh-CN';
-    recognition.continuous = false;
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
+    // 策略1: Windows SAPI（完全本地）
+    try {
+        const text = await transcribeViaWindows();
+        if (text) { stopVoice(); document.getElementById('chat-input').value = text; sendMessage(text); return; }
+    } catch(e) {}
     
-    recognition.onresult = (event) => {
-        const text = event.results[0][0].transcript;
-        if (text && text.trim()) {
-            document.getElementById('chat-input').value = text;
-            sendMessage(text);
+    // 策略2: Mimo 云端
+    try {
+        const cfg = window.electronAPI ? await window.electronAPI.loadConfig() : {};
+        const stt = cfg.stt || {};
+        if (stt.apiKey) {
+            const text = await transcribeViaMimo(stt);
+            if (text) { stopVoice(); document.getElementById('chat-input').value = text; sendMessage(text); return; }
         }
-        stopVoice();
-    };
+    } catch(e) {}
     
-    recognition.onerror = async (event) => {
-        if (event.error === 'network' || event.error === 'service-not-allowed') {
-            // Web Speech 失败 → 尝试 Mimo 云端 STT
-            stopVoice();
-            appendMessage('ai', '🔄 本地语音不可用，尝试云端识别...');
-            // 先试 Windows SAPI（完全本地）
-            try {
-                const text = await transcribeViaWindows();
-                if (text) {
-                    document.getElementById('chat-input').value = text;
-                    sendMessage(text);
-                    return;
-                }
-            } catch(e) {}
-            // 再试 Mimo 云端
-            try {
-                if (window.electronAPI?.loadConfig) {
-                    const cfg = await window.electronAPI.loadConfig();
-                    const stt = cfg.stt || {};
-                    if (stt.apiKey) {
-                        const text = await transcribeViaMimo(stt);
-                        if (text) {
-                            document.getElementById('chat-input').value = text;
-                            sendMessage(text);
-                            return;
-                        }
-                    }
-                }
-            } catch(e) {}
-            appendMessage('ai', '😅 语音识别失败，请检查麦克风权限或网络连接');
-        } else if (event.error !== 'aborted') {
-            appendMessage('ai', '😅 语音识别失败: ' + event.error);
-            stopVoice();
-        } else {
-            stopVoice();
-        }
-    };
+    // 策略3: Web Speech API
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+        try {
+            const text = await new Promise((resolve) => {
+                const rec = new SpeechRecognition();
+                rec.lang = 'zh-CN'; rec.continuous = false; rec.interimResults = false; rec.maxAlternatives = 1;
+                const t = setTimeout(() => { rec.abort(); resolve(''); }, 8000);
+                rec.onresult = (ev) => { clearTimeout(t); resolve(ev.results[0][0].transcript); };
+                rec.onerror = () => { clearTimeout(t); resolve(''); };
+                rec.onend = () => { clearTimeout(t); };
+                rec.start();
+            });
+            if (text) { stopVoice(); document.getElementById('chat-input').value = text; sendMessage(text); return; }
+        } catch(e) {}
+    }
     
-    recognition.onend = () => { stopVoice(); };
-    
-    try { recognition.start(); } catch(e) { stopVoice(); }
+    stopVoice();
+    appendMessage('ai', '😅 语音识别不可用，请检查麦克风或网络');
 });
 
 document.getElementById('btn-mic').addEventListener('mouseup', (e) => {
