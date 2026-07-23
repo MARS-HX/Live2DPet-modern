@@ -1,5 +1,68 @@
 # Changelog
 
+
+## v2.1.0 — Multi-Backend TTS & Enhanced Memory
+
+### ✨ 新功能
+- **多后端 TTS 语音合成**：支持小米蜜模 Mimo / 阿里云 TTS / 本地 VITS2 三种后端，设置中可切换
+- **本地 VITS2 支持**：可配置服务地址、接口路径、说话人 ID，适配任意 VITS2 HTTP API
+- **TTS 诊断工具**：设置页新增「🔍 诊断TTS」按钮，一键查看服务状态、熔断情况、API 配置
+- **截图频率可配置**：设置中可自定义截图间隔（0=每次检测都截，也可设为 30秒/60秒等）
+- **首次运行引导**：首次启动自动用浏览器打开使用说明文档
+- **语音识别双保险**：优先使用 Web Speech API（本地离线识别），失败自动切换到 Mimo 云端
+
+### 🧠 记忆系统增强
+- **对话自动总结**：每 10 条对话自动生成阶段总结
+- **兴趣话题追踪**：从对话中自动提取并追踪用户感兴趣的话题
+- **偏好学习**：识别用户的喜欢/不喜欢/日常习惯
+- **主动回忆机制**：宠物会冷不丁提起以前聊过的话题
+- **视觉 + 文字记忆共享**：VLM 截屏识别结果融入对话记忆，AI 知道「你刚才在看什么」
+- **记忆存储修复**：修复 ConversationStore 和 LongTermPool 互相覆盖数据的 bug，改为合并写入
+
+### 🎤 语音交互优化
+- **PCM 直接录音**：改用 ScriptProcessorNode 直接捕获 PCM 音频，不再依赖 WebM→WAV 转换
+- **分块 Base64 编码**：修复大音频文件 `Maximum call stack size exceeded` 爆栈问题
+- **实时音量指示**：录音时显示实时音量电平
+- **按住说话**：按下录音松开发送，支持 60 秒长录音
+
+### 🐛 Bug 修复
+- 修复 TTS `optimize_text_preview` 参数在非 voicedesign 模型下导致 400 错误
+- 修复 `desktop-pet-system.js` 和 `desktop-pet.html` 中多处字符串换行符被错误写入的语法问题
+- 修复 `get-active-window` 频繁 fallback 导致后台刷屏的问题（添加 2 秒缓存）
+- 修复截图频率控制中 `shouldScreenshot` 判断逻辑
+- 修复 Aliyun Provider HMAC 签名中的反斜杠转义问题
+- 修复多处多行字符串被实际写入文件导致的 SyntaxError
+
+### 🧹 代码清理
+- 删除已停用的 `translation-service.js` 及相关 UI/配置代码
+- 删除旧的 `convertToWav()` 函数（已被 `pcmToWavBlob()` 替代）
+- 删除旧的 `MediaRecorder` 录音方案残留代码
+- 删除 `VOICEVOX` 相关遗留代码
+- 清理 i18n 中翻译 API 相关的键值
+
+<details>
+<summary>中文</summary>
+
+- **多后端 TTS**：支持 Mimo / 阿里云 / 本地 VITS2，设置中可切换
+- **记忆系统增强**：自动总结、话题追踪、偏好学习、主动回忆
+- **语音识别优化**：Web Speech API 本地优先，PCM 直接录音
+- **截图频率可调**：设置中自定义间隔
+- **首次运行引导**：自动打开使用说明
+- **大量 Bug 修复和代码清理**
+
+</details>
+
+<details>
+<summary>日本語</summary>
+
+- **マルチバックエンド TTS**：Mimo / 阿里雲 / ローカル VITS2 対応
+- **記憶システム強化**：自動要約、トピック追跡、好み学習、アクティブリコール
+- **音声認識最適化**：Web Speech API 優先、PCM 直接録音
+- **スクリーンショット間隔設定可能**
+- **初回起動ガイド**：自動的に使用方法を表示
+- **多数のバグ修正とコード整理**
+
+</details>
 ## v2.0.0 — Interaction & Visual Memory
 
 - Interaction system: click/touch/drag/swipe/resize detection on pet, events injected into AI context
