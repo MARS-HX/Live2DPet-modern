@@ -259,6 +259,14 @@
                     }
                 }
 
+                // 读取保存的 canvasYRatio
+                try {
+                    const fullCfg = await window.electronAPI.loadConfig();
+                    if (fullCfg.canvasYRatio !== undefined) {
+                        modelConfig.canvasYRatio = fullCfg.canvasYRatio;
+                    }
+                } catch(e) {}
+                
                 currentAdapter = createModelAdapter(modelConfig);
                 const container = document.getElementById('pet-container');
                 await currentAdapter.load(container);
@@ -515,12 +523,11 @@
                     currentAdapter.setCanvasY(val);
                 }
             });
-            // 鼠标松开才保存配置
+            // 鼠标松开保存配置（只保存 canvasYRatio，不触发模型重载）
             slider.addEventListener('change', async () => {
                 const val = parseFloat(slider.value);
                 if (window.electronAPI) {
-                    const cfg = await window.electronAPI.loadConfig();
-                    if (cfg.model) { cfg.model.canvasYRatio = val; await window.electronAPI.saveConfig({ model: cfg.model }); }
+                    await window.electronAPI.saveConfig({ canvasYRatio: val });
                 }
             });
             // 加载保存的值
