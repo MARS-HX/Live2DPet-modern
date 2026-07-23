@@ -247,6 +247,20 @@
         <button class="btn btn-primary" id="btn-save-interval" data-i18n="btn.save">保存</button>
     </div>
     <div class="card">
+        <h2 data-i18n="audio.title">音频设备</h2>
+        <label data-i18n="audio.input">麦克风</label>
+        <select id="audio-input-device" style="margin-bottom:6px;"></select>
+        <label data-i18n="audio.output">扬声器</label>
+        <select id="audio-output-device" style="margin-bottom:6px;"></select>
+        <label data-i18n="audio.volume">音量</label>
+        <div style="display:flex;align-items:center;gap:8px;">
+            <input type="range" id="audio-volume" min="0" max="100" value="80" style="flex:1;">
+            <span id="audio-volume-label" style="font-size:12px;min-width:30px;">80%</span>
+        </div>
+        <button class="btn btn-primary" id="btn-save-audio" data-i18n="btn.save">保存</button>
+        <div class="status" id="audio-status"></div>
+    </div>
+    <div class="card">
         <label style="display:inline-flex;align-items:center;gap:6px;">
             <input type="checkbox" id="enhance-enabled">
             <span data-i18n="enhance.master">Enable Enhancement</span>

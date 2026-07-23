@@ -297,6 +297,70 @@ document.getElementById('mode-toggle').addEventListener('click', async () => {
 });
 
 // 发送消息（支持双模式）
+// 语音识别（Web Speech API）
+let isRecording = false;
+let recognition = null;
+
+document.getElementById('btn-mic').addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    if (isRecording) return;
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+        appendMessage('ai', '😅 浏览器不支持语音识别');
+        return;
+    }
+    
+    isRecording = true;
+    document.getElementById('btn-mic').classList.add('listening');
+    document.getElementById('btn-mic').textContent = '🔴';
+    
+    recognition = new SpeechRecognition();
+    recognition.lang = 'zh-CN';
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    
+    recognition.onresult = (event) => {
+        const text = event.results[0][0].transcript;
+        if (text && text.trim()) {
+            document.getElementById('chat-input').value = text;
+            sendMessage(text);
+        }
+        stopVoice();
+    };
+    
+    recognition.onerror = (event) => {
+        if (event.error !== 'aborted') {
+            appendMessage('ai', '😅 语音识别失败: ' + event.error);
+        }
+        stopVoice();
+    };
+    
+    recognition.onend = () => { stopVoice(); };
+    
+    try { recognition.start(); } catch(e) { stopVoice(); }
+});
+
+document.getElementById('btn-mic').addEventListener('mouseup', (e) => {
+    e.preventDefault();
+    stopVoice();
+});
+
+document.getElementById('btn-mic').addEventListener('mouseleave', () => {
+    if (isRecording) stopVoice();
+});
+
+function stopVoice() {
+    if (recognition) {
+        try { recognition.abort(); } catch(e) {}
+        recognition = null;
+    }
+    isRecording = false;
+    const mic = document.getElementById('btn-mic');
+    mic.classList.remove('listening');
+    mic.textContent = '🎤';
+}
+
 async function sendMessage(text) {
     if (!text || !text.trim()) return;
     const msg = text.trim();

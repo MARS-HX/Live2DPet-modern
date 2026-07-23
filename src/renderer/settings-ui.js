@@ -1508,6 +1508,67 @@ document.getElementById('btn-preset-save')?.addEventListener('click', () => {
         localStorage.setItem('live2dpet_presets', JSON.stringify(userPresets));
         showStatus('preset-status', t('tavern.savedMsg'), 'success');
         loadPresetList();
+
+// ========== 音频设备管理 ==========
+async function enumerateAudioDevices() {
+    try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const inputSel = document.getElementById('audio-input-device');
+        const outputSel = document.getElementById('audio-output-device');
+        if (!inputSel || !outputSel) return;
+        
+        inputSel.innerHTML = '<option value="default">默认设备</option>';
+        outputSel.innerHTML = '<option value="default">默认设备</option>';
+        
+        for (const d of devices) {
+            if (d.kind === 'audioinput' && d.deviceId) {
+                const opt = document.createElement('option');
+                opt.value = d.deviceId;
+                opt.textContent = d.label || '麦克风 (' + d.deviceId.slice(0,8) + '...)';
+                inputSel.appendChild(opt);
+            }
+            if (d.kind === 'audiooutput' && d.deviceId) {
+                const opt = document.createElement('option');
+                opt.value = d.deviceId;
+                opt.textContent = d.label || '扬声器 (' + d.deviceId.slice(0,8) + '...)';
+                outputSel.appendChild(opt);
+            }
+        }
+    } catch(e) { console.warn('[Audio] 枚举设备失败:', e.message); }
+}
+
+// 加载保存的音频设置
+try {
+    const saved = JSON.parse(localStorage.getItem('live2dpet_audio') || '{}');
+    if (saved.inputDevice) document.getElementById('audio-input-device').value = saved.inputDevice;
+    if (saved.outputDevice) document.getElementById('audio-output-device').value = saved.outputDevice;
+    if (saved.volume !== undefined) {
+        document.getElementById('audio-volume').value = saved.volume;
+        document.getElementById('audio-volume-label').textContent = saved.volume + '%';
+    }
+} catch(e) {}
+
+// 音量滑块联动
+document.getElementById('audio-volume')?.addEventListener('input', (e) => {
+    document.getElementById('audio-volume-label').textContent = e.target.value + '%';
+});
+
+// 保存音频设置
+document.getElementById('btn-save-audio')?.addEventListener('click', () => {
+    const settings = {
+        inputDevice: document.getElementById('audio-input-device').value,
+        outputDevice: document.getElementById('audio-output-device').value,
+        volume: parseInt(document.getElementById('audio-volume').value)
+    };
+    localStorage.setItem('live2dpet_audio', JSON.stringify(settings));
+    showStatus('audio-status', '音频设置已保存', 'success');
+});
+
+// 页面加载时枚举设备
+if (navigator.mediaDevices?.enumerateDevices) {
+    enumerateAudioDevices();
+    navigator.mediaDevices.addEventListener('devicechange', enumerateAudioDevices);
+}
     } catch(e) { showStatus('preset-status', '保存失败: ' + e.message, 'error'); }
 });
 
@@ -1550,6 +1611,67 @@ document.getElementById('btn-preset-import')?.addEventListener('click', () => {
             userPresets.push(preset);
             localStorage.setItem('live2dpet_presets', JSON.stringify(userPresets));
             loadPresetList();
+
+// ========== 音频设备管理 ==========
+async function enumerateAudioDevices() {
+    try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const inputSel = document.getElementById('audio-input-device');
+        const outputSel = document.getElementById('audio-output-device');
+        if (!inputSel || !outputSel) return;
+        
+        inputSel.innerHTML = '<option value="default">默认设备</option>';
+        outputSel.innerHTML = '<option value="default">默认设备</option>';
+        
+        for (const d of devices) {
+            if (d.kind === 'audioinput' && d.deviceId) {
+                const opt = document.createElement('option');
+                opt.value = d.deviceId;
+                opt.textContent = d.label || '麦克风 (' + d.deviceId.slice(0,8) + '...)';
+                inputSel.appendChild(opt);
+            }
+            if (d.kind === 'audiooutput' && d.deviceId) {
+                const opt = document.createElement('option');
+                opt.value = d.deviceId;
+                opt.textContent = d.label || '扬声器 (' + d.deviceId.slice(0,8) + '...)';
+                outputSel.appendChild(opt);
+            }
+        }
+    } catch(e) { console.warn('[Audio] 枚举设备失败:', e.message); }
+}
+
+// 加载保存的音频设置
+try {
+    const saved = JSON.parse(localStorage.getItem('live2dpet_audio') || '{}');
+    if (saved.inputDevice) document.getElementById('audio-input-device').value = saved.inputDevice;
+    if (saved.outputDevice) document.getElementById('audio-output-device').value = saved.outputDevice;
+    if (saved.volume !== undefined) {
+        document.getElementById('audio-volume').value = saved.volume;
+        document.getElementById('audio-volume-label').textContent = saved.volume + '%';
+    }
+} catch(e) {}
+
+// 音量滑块联动
+document.getElementById('audio-volume')?.addEventListener('input', (e) => {
+    document.getElementById('audio-volume-label').textContent = e.target.value + '%';
+});
+
+// 保存音频设置
+document.getElementById('btn-save-audio')?.addEventListener('click', () => {
+    const settings = {
+        inputDevice: document.getElementById('audio-input-device').value,
+        outputDevice: document.getElementById('audio-output-device').value,
+        volume: parseInt(document.getElementById('audio-volume').value)
+    };
+    localStorage.setItem('live2dpet_audio', JSON.stringify(settings));
+    showStatus('audio-status', '音频设置已保存', 'success');
+});
+
+// 页面加载时枚举设备
+if (navigator.mediaDevices?.enumerateDevices) {
+    enumerateAudioDevices();
+    navigator.mediaDevices.addEventListener('devicechange', enumerateAudioDevices);
+}
             fillPresetEditor(preset);
             document.getElementById('preset-editor').style.display = 'block';
             showStatus('preset-status', '预设 "' + preset.name + '" 已导入！', 'success');
@@ -1570,6 +1692,67 @@ document.getElementById('btn-preset-delete')?.addEventListener('click', () => {
         userPresets = userPresets.filter(p => p.name !== name);
         localStorage.setItem('live2dpet_presets', JSON.stringify(userPresets));
         loadPresetList();
+
+// ========== 音频设备管理 ==========
+async function enumerateAudioDevices() {
+    try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const inputSel = document.getElementById('audio-input-device');
+        const outputSel = document.getElementById('audio-output-device');
+        if (!inputSel || !outputSel) return;
+        
+        inputSel.innerHTML = '<option value="default">默认设备</option>';
+        outputSel.innerHTML = '<option value="default">默认设备</option>';
+        
+        for (const d of devices) {
+            if (d.kind === 'audioinput' && d.deviceId) {
+                const opt = document.createElement('option');
+                opt.value = d.deviceId;
+                opt.textContent = d.label || '麦克风 (' + d.deviceId.slice(0,8) + '...)';
+                inputSel.appendChild(opt);
+            }
+            if (d.kind === 'audiooutput' && d.deviceId) {
+                const opt = document.createElement('option');
+                opt.value = d.deviceId;
+                opt.textContent = d.label || '扬声器 (' + d.deviceId.slice(0,8) + '...)';
+                outputSel.appendChild(opt);
+            }
+        }
+    } catch(e) { console.warn('[Audio] 枚举设备失败:', e.message); }
+}
+
+// 加载保存的音频设置
+try {
+    const saved = JSON.parse(localStorage.getItem('live2dpet_audio') || '{}');
+    if (saved.inputDevice) document.getElementById('audio-input-device').value = saved.inputDevice;
+    if (saved.outputDevice) document.getElementById('audio-output-device').value = saved.outputDevice;
+    if (saved.volume !== undefined) {
+        document.getElementById('audio-volume').value = saved.volume;
+        document.getElementById('audio-volume-label').textContent = saved.volume + '%';
+    }
+} catch(e) {}
+
+// 音量滑块联动
+document.getElementById('audio-volume')?.addEventListener('input', (e) => {
+    document.getElementById('audio-volume-label').textContent = e.target.value + '%';
+});
+
+// 保存音频设置
+document.getElementById('btn-save-audio')?.addEventListener('click', () => {
+    const settings = {
+        inputDevice: document.getElementById('audio-input-device').value,
+        outputDevice: document.getElementById('audio-output-device').value,
+        volume: parseInt(document.getElementById('audio-volume').value)
+    };
+    localStorage.setItem('live2dpet_audio', JSON.stringify(settings));
+    showStatus('audio-status', '音频设置已保存', 'success');
+});
+
+// 页面加载时枚举设备
+if (navigator.mediaDevices?.enumerateDevices) {
+    enumerateAudioDevices();
+    navigator.mediaDevices.addEventListener('devicechange', enumerateAudioDevices);
+}
         document.getElementById('preset-editor').style.display = 'none';
         showStatus('preset-status', '已删除', 'success');
     } catch(e) { showStatus('preset-status', '删除失败', 'error'); }
@@ -1588,3 +1771,64 @@ document.getElementById('btn-preset-apply')?.addEventListener('click', async () 
 
 // 页面加载时初始化预设列表
 loadPresetList();
+
+// ========== 音频设备管理 ==========
+async function enumerateAudioDevices() {
+    try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const inputSel = document.getElementById('audio-input-device');
+        const outputSel = document.getElementById('audio-output-device');
+        if (!inputSel || !outputSel) return;
+        
+        inputSel.innerHTML = '<option value="default">默认设备</option>';
+        outputSel.innerHTML = '<option value="default">默认设备</option>';
+        
+        for (const d of devices) {
+            if (d.kind === 'audioinput' && d.deviceId) {
+                const opt = document.createElement('option');
+                opt.value = d.deviceId;
+                opt.textContent = d.label || '麦克风 (' + d.deviceId.slice(0,8) + '...)';
+                inputSel.appendChild(opt);
+            }
+            if (d.kind === 'audiooutput' && d.deviceId) {
+                const opt = document.createElement('option');
+                opt.value = d.deviceId;
+                opt.textContent = d.label || '扬声器 (' + d.deviceId.slice(0,8) + '...)';
+                outputSel.appendChild(opt);
+            }
+        }
+    } catch(e) { console.warn('[Audio] 枚举设备失败:', e.message); }
+}
+
+// 加载保存的音频设置
+try {
+    const saved = JSON.parse(localStorage.getItem('live2dpet_audio') || '{}');
+    if (saved.inputDevice) document.getElementById('audio-input-device').value = saved.inputDevice;
+    if (saved.outputDevice) document.getElementById('audio-output-device').value = saved.outputDevice;
+    if (saved.volume !== undefined) {
+        document.getElementById('audio-volume').value = saved.volume;
+        document.getElementById('audio-volume-label').textContent = saved.volume + '%';
+    }
+} catch(e) {}
+
+// 音量滑块联动
+document.getElementById('audio-volume')?.addEventListener('input', (e) => {
+    document.getElementById('audio-volume-label').textContent = e.target.value + '%';
+});
+
+// 保存音频设置
+document.getElementById('btn-save-audio')?.addEventListener('click', () => {
+    const settings = {
+        inputDevice: document.getElementById('audio-input-device').value,
+        outputDevice: document.getElementById('audio-output-device').value,
+        volume: parseInt(document.getElementById('audio-volume').value)
+    };
+    localStorage.setItem('live2dpet_audio', JSON.stringify(settings));
+    showStatus('audio-status', '音频设置已保存', 'success');
+});
+
+// 页面加载时枚举设备
+if (navigator.mediaDevices?.enumerateDevices) {
+    enumerateAudioDevices();
+    navigator.mediaDevices.addEventListener('devicechange', enumerateAudioDevices);
+}

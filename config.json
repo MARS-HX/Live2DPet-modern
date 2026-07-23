@@ -1,6 +1,6 @@
 {
   "configVersion": 1,
-  "apiKey": "enc:v1:28164bf0a36573cc86c7b209:3c8b862bd232e81bf3dcd0aefa0c86b6:415e5704a3b4ef41dfd87550d0e9aa3f9e61541af4879c91551125e276d484aab472e9bf1b91c01aa727dd8d449dfe4619eff6",
+  "apiKey": "enc:v1:df8eef2a9f66ad3c8270a12e:a860da974d884ac3f3735c691bc1c71c:0dd8b34c1442682b614af0feabff199f6504a9baa489c79d0e63847e89263cf3074e78cd219a21da5792582b9c43e1c55c9464",
   "baseURL": "https://api.xiaomimimo.com/v1",
   "modelName": "mimo-v2.5",
   "interval": 90,
@@ -238,25 +238,21 @@
     }
   },
   "allowSimultaneous": true,
-  "activeCharacterId": "2bcf3d8a-85e8-47dd-aa07-792fe91cca26",
-  "characters": [
-    {
-      "id": "2bcf3d8a-85e8-47dd-aa07-792fe91cca26"
-    }
-  ],
+  "activeCharacterId": "",
+  "characters": [],
   "tts": {
     "serviceType": "mimo",
     "audioMode": "tts",
     "mimo": {
       "baseURL": "https://api.xiaomimimo.com/v1",
-      "apiKey": "sk-c7jsqk6xg73swlm82fu9xsv2dvkw2tnxun2600kuk8ghlsbz",
+      "apiKey": "",
       "stylePrompt": "小女孩、活泼，可爱、开朗，声音稚嫩",
       "format": "wav"
     }
   },
   "stt": {
     "baseURL": "https://api.xiaomimimo.com/v1/audio/transcriptions",
-    "apiKey": "sk-c7jsqk6xg73swlm82fu9xsv2dvkw2tnxun2600kuk8ghlsbz",
+    "apiKey": "",
     "model": "mimo-v2.5-asr",
     "language": "zh"
   },
@@ -267,5 +263,6 @@
     "modelName": ""
   },
   "screenshotInterval": 60,
-  "appMode": "tavern"
+  "appMode": "tavern",
+  "firstRun": true
 }
