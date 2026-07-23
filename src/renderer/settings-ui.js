@@ -1119,15 +1119,15 @@ document.getElementById('btn-diagnose-tts')?.addEventListener('click', async () 
         const diag = await window.electronAPI.ttsDiagnose();
         if (!diag) throw new Error('IPC无响应');
         const lines = [
-            'TTS服务: ' + (diag.serviceExists ? '存在' : '不存在'),
-            '已初始化: ' + (diag.initialized ? '是' : '否'),
-            '熔断: ' + (diag.degraded ? '已熔断' : '正常'),
-            '失败率: ' + diag.failCount + '/' + diag.maxFails,
-            'API Key: ' + (diag.config?.hasApiKey ? '已设置' : '未设置'),
-            '模型: ' + (diag.config?.model || '无'),
-            '可用: ' + (diag.isAvailable ? '是' : '否')
+            'Service: ' + (diag.serviceExists ? 'OK' : 'N/A'),
+            'Init: ' + (diag.initialized ? 'Yes' : 'No'),
+            'Circuit: ' + (diag.degraded ? 'Broken' : 'Normal'),
+            'Fails: ' + diag.failCount + '/' + diag.maxFails,
+            'API Key: ' + (diag.config?.hasApiKey ? 'Set' : 'Not set'),
+            'Model: ' + (diag.config?.model || 'N/A'),
+            'Available: ' + (diag.isAvailable ? 'Yes' : 'No')
         ];
-        el.innerHTML = 'TTS诊断:<br>' + lines.join('<br>');
+        el.innerHTML = 'TTS Diagnosis:<br>' + lines.join('<br>');
         el.className = diag.isAvailable ? 'status success' : 'status error';
     } catch(e) {
         el.textContent = '诊断失败: ' + e.message;
