@@ -17,7 +17,7 @@ html, body { width:100%; height:100%; background:transparent; overflow:hidden; f
     overflow:hidden;
 }
 #drag-bar {
-    padding:6px 10px;
+    padding:4px 8px;
     background:#f8f8f8;
     border-bottom:1px solid #eee;
     display:flex;
@@ -27,11 +27,13 @@ html, body { width:100%; height:100%; background:transparent; overflow:hidden; f
     color:#666;
     cursor:move;
     -webkit-app-region:drag;
+    min-height:28px;
 }
-#drag-bar .title { display:flex; align-items:center; gap:6px; }
-#drag-bar .controls { display:flex; gap:4px; -webkit-app-region:no-drag; }
+#drag-bar .title { display:flex; align-items:center; gap:4px; flex-shrink:0; }
+#drag-bar .controls { display:flex; gap:2px; align-items:center; -webkit-app-region:no-drag; }
 .mode-badge {
-    font-size:10px; padding:1px 8px; border-radius:8px; cursor:pointer; -webkit-app-region:no-drag;
+    font-size:9px; padding:1px 6px; border-radius:6px; cursor:pointer; -webkit-app-region:no-drag;
+    white-space:nowrap;
 }
 .mode-companion .mode-badge { background:#e8f5e9; color:#2e7d32; }
 .mode-tavern .mode-badge { background:#fff3e0; color:#e65100; }
@@ -76,13 +78,15 @@ html, body { width:100%; height:100%; background:transparent; overflow:hidden; f
 <body>
 <div id="chat-container">
     <div id="drag-bar">
-        <span class="title"><span id="mode-icon">🐱</span> <span id="mode-label">陪伴模式</span></span>
-        <span class="controls">
+        <span class="title">
+            <span id="mode-icon">🐱</span>
+            <span id="mode-label">陪伴</span>
             <span class="mode-badge" id="mode-toggle" title="切换模式">切换</span>
-            <select id="preset-select" style="display:none;font-size:10px;padding:1px 4px;border:1px solid #ddd;border-radius:4px;max-width:90px;">
-                <option value="">预设...</option>
+        </span>
+        <span class="controls">
+            <select id="preset-select" style="display:none;font-size:10px;padding:1px 4px;border:1px solid #ddd;border-radius:4px;max-width:80px;">
+                <option value="">预设</option>
             </select>
-            <button class="ctrl-btn" id="btn-minimize" title="最小化">─</button>
             <button class="ctrl-btn" id="btn-close" title="关闭">✕</button>
         </span>
     </div>
@@ -328,7 +332,6 @@ async function generateDiary() {
 document.getElementById('btn-send').addEventListener('click', () => sendMessage(document.getElementById('chat-input').value));
 document.getElementById('chat-input').addEventListener('keydown', (e) => { if(e.key==='Enter'&&!e.shiftKey) { e.preventDefault(); sendMessage(e.target.value); }});
 document.getElementById('btn-close').addEventListener('click', () => window.close());
-document.getElementById('btn-minimize').addEventListener('click', () => { try { window.close(); } catch(e){} });
 
 init();</script>
 </body>
