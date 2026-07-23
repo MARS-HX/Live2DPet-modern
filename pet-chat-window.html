@@ -5,21 +5,48 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Chat Window</title>
 <style>
+:root {
+    --chat-bg: rgba(255,255,255,0.95);
+    --chat-text: #333;
+    --chat-input-bg: rgba(255,255,255,0.8);
+    --chat-input-border: #ddd;
+    --chat-msg-user: #333;
+    --chat-msg-ai: #e75480;
+    --chat-bar-bg: #f8f8f8;
+    --chat-bar-border: #eee;
+    --chat-time: #bbb;
+    --chat-shadow: 0 4px 20px rgba(0,0,0,0.15);
+}
+body.dark select option { background:#2a2a3e; color:#e0e0e0; }
+body.dark {
+    --chat-bg: rgba(30,30,50,0.95);
+    --chat-text: #e0e0e0;
+    --chat-input-bg: rgba(255,255,255,0.06);
+    --chat-input-border: rgba(255,255,255,0.12);
+    --chat-msg-user: #e0e0e0;
+    --chat-msg-ai: #f48fb1;
+    --chat-bar-bg: rgba(40,40,60,0.95);
+    --chat-bar-border: rgba(255,255,255,0.06);
+    --chat-time: #666;
+    --chat-shadow: 0 4px 20px rgba(0,0,0,0.4);
+}
 * { margin:0; padding:0; box-sizing:border-box; user-select:none; }
 html, body { width:100%; height:100%; background:transparent; overflow:hidden; font-family:'Microsoft YaHei',sans-serif; }
 #chat-container {
     width:100%; height:100%;
     display:flex; flex-direction:column;
-    background:rgba(255,255,255,0.95);
+    background:var(--chat-bg);
     border-radius:12px;
-    border:1px solid rgba(0,0,0,0.1);
-    box-shadow:0 4px 20px rgba(0,0,0,0.15);
+    border:1px solid var(--chat-bar-border);
+    box-shadow:var(--chat-shadow);
     overflow:hidden;
+    transition:background 0.3s,box-shadow 0.3s;
 }
 #drag-bar {
     padding:4px 8px;
-    background:#f8f8f8;
-    border-bottom:1px solid #eee;
+    background:var(--chat-bar-bg);
+    border-bottom:1px solid var(--chat-bar-border);
+    color:var(--chat-text);
     display:flex;
     justify-content:space-between;
     align-items:center;
@@ -43,26 +70,31 @@ html, body { width:100%; height:100%; background:transparent; overflow:hidden; f
 .ctrl-btn:hover { color:#e75480; }
 #chat-messages {
     flex:1; overflow-y:auto; padding:8px; font-size:13px; line-height:1.6;
-    background:rgba(255,255,255,0.9);
+    background:var(--chat-bg);
 }
 .msg { margin:4px 0; word-break:break-word; }
-.msg.user { color:#333; text-align:right; }
-.msg.ai { color:#e75480; text-align:left; }
-.msg-time { font-size:9px; color:#bbb; display:block; }
+.msg.user { color:var(--chat-msg-user); text-align:right; }
+.msg.ai { color:var(--chat-msg-ai); text-align:left; }
+.msg-time { font-size:9px; color:var(--chat-time); display:block; }
+body.dark .msg.ai { color:#f48fb1; }
 .msg.user .msg-time { text-align:right; }
 .msg.ai .msg-time { text-align:left; }
 #typing-indicator { display:none; font-size:11px; color:#e75480; padding:2px 8px; }
 #typing-indicator.show { display:block; }
 #input-row {
     display:flex; gap:4px; padding:6px 8px;
-    background:rgba(255,255,255,0.95);
-    border-top:1px solid #eee;
+    background:var(--chat-bg);
+    border-top:1px solid var(--chat-bar-border);
 }
 #chat-input {
-    flex:1; border:1px solid #ddd; border-radius:16px; padding:6px 12px;
+    flex:1; border:1px solid var(--chat-input-border); border-radius:16px; padding:6px 12px;
     font-size:13px; outline:none;
+    background:var(--chat-input-bg);
+    color:var(--chat-text);
+    transition:border-color 0.2s,background 0.3s;
 }
 #chat-input:focus { border-color:#e75480; }
+body.dark #chat-input::placeholder { color:#888; }
 .chat-btn {
     border:none; border-radius:50%; width:30px; height:30px;
     cursor:pointer; font-size:14px; display:flex; align-items:center; justify-content:center;
@@ -107,6 +139,13 @@ let diaryStore = null;
 let currentPreset = null;
 
 async function init() {
+    // 同步设置页的主题
+    const savedTheme = localStorage.getItem('live2dpet_theme');
+    if (savedTheme === 'dark') document.body.classList.add('dark');
+    else if (savedTheme === null && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.body.classList.add('dark');
+    }
+    
     chatStore = new ConversationStore();
     await chatStore.load();
     window.__chatStore = chatStore;
@@ -116,7 +155,6 @@ async function init() {
             if (msg && msg.text) appendMessage(msg.role || 'ai', msg.text);
         });
     }
-    // 加载上次的模式
     try {
         const cfg = await window.electronAPI?.loadConfig();
         if (cfg?.appMode === 'tavern') {
