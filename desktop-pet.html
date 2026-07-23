@@ -508,15 +508,20 @@
             container.addEventListener('mouseenter', () => { adjuster.style.display = 'flex'; });
             container.addEventListener('mouseleave', () => { hideTimer = setTimeout(() => { adjuster.style.display = 'none'; }, 2000); });
             adjuster.addEventListener('mouseenter', () => { clearTimeout(hideTimer); });
-            slider.addEventListener('input', async () => {
+            slider.addEventListener('input', () => {
                 const val = parseFloat(slider.value);
                 label.textContent = val.toFixed(2);
+                if (currentAdapter && currentAdapter.setCanvasY) {
+                    currentAdapter.setCanvasY(val);
+                }
+            });
+            // 鼠标松开才保存配置
+            slider.addEventListener('change', async () => {
+                const val = parseFloat(slider.value);
                 if (window.electronAPI) {
-                    await window.electronAPI.setCanvasY(val);
                     const cfg = await window.electronAPI.loadConfig();
                     if (cfg.model) { cfg.model.canvasYRatio = val; await window.electronAPI.saveConfig({ model: cfg.model }); }
                 }
-                if (currentAdapter && currentAdapter.setCanvasY) currentAdapter.setCanvasY(val);
             });
             // 加载保存的值
             (async () => {

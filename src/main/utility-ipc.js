@@ -90,14 +90,27 @@ function registerUtilityIPC(ctx, ipcMain, deps) {
     ipcMain.handle('stt-windows', async () => {
         try {
             const { execSync } = require('child_process');
-            const psScript = `$recognizer = New-Object -ComObject SAPI.SpRecognizer
-$audio = $recognizer.GetAudioInputs() | Select-Object -First 1
-$recognizer.AudioInput = $audio
-$context = $recognizer.CreateRecoContext()
-$grammar = $context.CreateGrammar()
-$grammar.DictationSetState(1)
-$result = $grammar.Recognize(5000)
-if ($result) { Write-Output $result.PhraseInfo.GetText() } else { Write-Output '__TIMEOUT__' }`;
+            // 先试 .NET System.Speech，不行再试 COM SAPI
+            const psScript = `try {
+  Add-Type -AssemblyName System.Speech
+  $recognizer = New-Object System.Speech.Recognition.SpeechRecognitionEngine
+  $recognizer.SetInputToDefaultAudioDevice()
+  $grammar = New-Object System.Speech.Recognition.DictationGrammar
+  $recognizer.LoadGrammar($grammar)
+  $result = $recognizer.Recognize([TimeSpan]::FromSeconds(5))
+  if ($result) { Write-Output $result.Text } else { Write-Output '__TIMEOUT__' }
+} catch {
+  try {
+    $recognizer = New-Object -ComObject SAPI.SpRecognizer
+    $audio = $recognizer.GetAudioInputs() | Select-Object -First 1
+    $recognizer.AudioInput = $audio
+    $context = $recognizer.CreateRecoContext()
+    $grammar = $context.CreateGrammar()
+    $grammar.DictationSetState(1)
+    $result = $grammar.Recognize(5000)
+    if ($result) { Write-Output $result.PhraseInfo.GetText() } else { Write-Output '__TIMEOUT__' }
+  } catch { Write-Output '__TIMEOUT__' }
+}`;
             const fs = require('fs');
             const path = require('path');
             const os = require('os');

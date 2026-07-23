@@ -261,6 +261,13 @@ class Live2DAdapter extends ModelAdapter {
     }
 
     getType() { return 'live2d'; }
+
+    setCanvasY(val) {
+        if (this.config) this.config.canvasYRatio = val;
+        if (this.app && this.model) {
+            this.model.y = this.app.screen.height * val;
+        }
+    }
 }
 
 // ========== Image Adapter ==========
@@ -404,6 +411,7 @@ class ImageAdapter extends ModelAdapter {
     }
 
     getType() { return 'image'; }
+    setCanvasY(val) { if (this.config) this.config.canvasYRatio = val; }
 }
 
 // ========== Null Adapter ==========

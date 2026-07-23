@@ -243,10 +243,15 @@ document.getElementById('model-type').addEventListener('change', () => {
     updateModelCards();
 });
 
-// Canvas Y slider
+// Canvas Y slider（实时同步到宠物窗口）
 document.getElementById('canvas-y-slider').addEventListener('input', (e) => {
-    document.getElementById('canvas-y-val').textContent = parseFloat(e.target.value).toFixed(2);
-    currentModelConfig.canvasYRatio = parseFloat(e.target.value);
+    const val = parseFloat(e.target.value);
+    document.getElementById('canvas-y-val').textContent = val.toFixed(2);
+    currentModelConfig.canvasYRatio = val;
+    // 实时同步到宠物窗口
+    if (window.electronAPI) {
+        window.electronAPI.setCanvasY(val);
+    }
 });
 
 // Image crop slider
