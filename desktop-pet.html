@@ -53,22 +53,64 @@
         .ctrl-btn:hover { background: rgba(255,255,255,1); }
         .ctrl-btn:disabled { opacity: 0.3; cursor: default; }
 
-        /* ===== 聊天框样式 ===== */
+        /* ===== 聊天框样式（可拖动 + 置顶） ===== */
         #chat-overlay {
-            position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
-            width: 260px; z-index: 200;
+            position: absolute; top: 5px; left: 5px;
+            width: 280px; z-index: 200;
             display: none; flex-direction: column;
             -webkit-app-region: no-drag;
             font-family: 'Microsoft YaHei', sans-serif;
+            cursor: default;
+            max-height: calc(100% - 100px);
         }
         #chat-overlay.show { display: flex; }
-        #chat-messages {
-            background: rgba(255,255,255,0.92);
-            border-radius: 10px 10px 0 0;
-            padding: 8px; max-height: 150px; overflow-y: auto;
-            font-size: 12px; line-height: 1.5;
+        #chat-drag-handle {
+            background: rgba(255,255,255,0.9);
             border: 1px solid rgba(0,0,0,0.1);
             border-bottom: none;
+            border-radius: 10px 10px 0 0;
+            padding: 4px 8px;
+            font-size: 11px;
+            color: #999;
+            cursor: move;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            -webkit-app-region: no-drag;
+            user-select: none;
+        }
+        #chat-drag-handle .chat-mode-badge {
+            font-size: 10px;
+            padding: 1px 6px;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .mode-companion #chat-drag-handle .chat-mode-badge {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+        .mode-tavern #chat-drag-handle .chat-mode-badge {
+            background: #fff3e0;
+            color: #e65100;
+        }
+        #chat-close-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 12px;
+            color: #999;
+            padding: 0 4px;
+            line-height: 1;
+        }
+        #chat-close-btn:hover { color: #e75480; }
+        #chat-messages {
+            background: rgba(255,255,255,0.92);
+            padding: 8px; max-height: 200px; overflow-y: auto;
+            font-size: 12px; line-height: 1.5;
+            border-left: 1px solid rgba(0,0,0,0.1);
+            border-right: 1px solid rgba(0,0,0,0.1);
+            flex: 1;
+            min-height: 50px;
         }
         #chat-messages .msg { margin: 2px 0; word-break: break-all; }
         #chat-messages .msg.user { color: #333; text-align: right; }
@@ -113,6 +155,49 @@
         }
         #btn-chat-toggle:hover { background: rgba(255,255,255,1); }
         #btn-chat-toggle.active { background: #e75480; color: white; border-color: #e75480; }
+        /* ===== 日记弹窗 ===== */
+        #diary-popup {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.4);
+            z-index: 999;
+            justify-content: center;
+            align-items: center;
+        }
+        #diary-popup.show { display: flex; }
+        #diary-content {
+            background: white;
+            border-radius: 16px;
+            padding: 24px;
+            max-width: 400px;
+            max-height: 500px;
+            overflow-y: auto;
+            font-size: 13px;
+            line-height: 1.8;
+            color: #333;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+            position: relative;
+            font-family: 'Microsoft YaHei', 'KaiTi', serif;
+        }
+        #diary-content h3 {
+            color: #e75480;
+            margin-bottom: 12px;
+            font-size: 16px;
+            text-align: center;
+        }
+        #diary-close-btn {
+            display: block;
+            margin: 16px auto 0;
+            padding: 6px 24px;
+            border: none;
+            border-radius: 20px;
+            background: #e75480;
+            color: white;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        #diary-close-btn:hover { background: #d4446a; }
         .chat-time {
             font-size: 10px; color: #999; text-align: center;
             padding: 2px 0;
@@ -214,8 +299,13 @@
             <button class="ctrl-btn" id="btn-settings" title="Settings">⚙</button>
             <button class="ctrl-btn" id="btn-close" title="Close">✕</button>
         </div>
-        <!-- 聊天框 -->
-        <div id="chat-overlay">
+        <!-- 聊天框（可拖动 + 多模式） -->
+        <div id="chat-overlay" class="mode-companion">
+            <div id="chat-drag-handle">
+                <span>💬 聊天</span>
+                <span class="chat-mode-badge" id="chat-mode-toggle" title="点击切换模式">陪伴模式</span>
+                <button id="chat-close-btn">✕</button>
+            </div>
             <div id="chat-messages"></div>
             <div id="typing-indicator">💭 正在输入...</div>
             <div id="vad-indicator"><div id="vad-level"></div></div>
@@ -226,6 +316,10 @@
                 <button class="chat-btn" id="btn-mic" title="语音输入（按住说话）">🎤</button>
                 <button class="chat-btn" id="btn-send" title="发送">➤</button>
             </div>
+        </div>
+        <!-- 日记弹窗 -->
+        <div id="diary-popup">
+            <div id="diary-content"></div>
         </div>
     </div>
 
@@ -1033,8 +1127,193 @@
 
 
 
+        // ===== 聊天框拖动 + 模式切换 + 日记 =====
+        let chatMode = 'companion'; // 'companion' | 'tavern'
+        let diaryStore = null;      // 酒馆模式的独立记忆
+
+        // 聊天框拖动
+        (function() {
+            const overlay = document.getElementById('chat-overlay');
+            const handle = document.getElementById('chat-drag-handle');
+            if (!overlay || !handle) return;
+            let isDragging = false, startX, startY, origX, origY;
+            
+            handle.addEventListener('mousedown', (e) => {
+                if (e.target.classList.contains('chat-mode-badge') || e.target.id === 'chat-close-btn') return;
+                isDragging = true;
+                const rect = overlay.getBoundingClientRect();
+                startX = e.clientX; startY = e.clientY;
+                origX = rect.left; origY = rect.top;
+                overlay.style.left = origX + 'px';
+                overlay.style.top = origY + 'px';
+                overlay.style.position = 'fixed';
+                e.preventDefault();
+            });
+            
+            document.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                overlay.style.left = (origX + e.clientX - startX) + 'px';
+                overlay.style.top = (origY + e.clientY - startY) + 'px';
+            });
+            
+            document.addEventListener('mouseup', () => { isDragging = false; });
+        })();
+
+        // 关闭聊天框
+        document.getElementById('chat-close-btn')?.addEventListener('click', () => {
+            document.getElementById('chat-overlay').classList.remove('show');
+            document.getElementById('btn-chat-toggle').classList.remove('active');
+        });
+
+        // 模式切换
+        document.getElementById('chat-mode-toggle')?.addEventListener('click', async () => {
+            const overlay = document.getElementById('chat-overlay');
+            const badge = document.getElementById('chat-mode-toggle');
+            const messages = document.getElementById('chat-messages');
+            
+            if (chatMode === 'companion') {
+                // 切换到酒馆模式
+                chatMode = 'tavern';
+                overlay.className = 'mode-tavern show';
+                badge.textContent = '🏰 酒馆模式';
+                messages.innerHTML = ''; // 清空聊天显示
+                
+                // 加载酒馆独立记忆
+                if (!diaryStore && typeof ConversationStore !== 'undefined') {
+                    diaryStore = new ConversationStore();
+                    diaryStore.maxEntries = 100;
+                    // 用不同的存储 key
+                    diaryStore._saveKey = 'tavernHistory';
+                    await diaryStore.load();
+                    // 加载历史消息到界面
+                    const recent = diaryStore.history.slice(-20);
+                    for (const msg of recent) {
+                        appendMessage(msg.role, msg.content);
+                    }
+                    // 显示上次的日记摘要
+                    if (diaryStore.summaries.length > 0) {
+                        const lastSummary = diaryStore.summaries[diaryStore.summaries.length - 1];
+                        appendMessage('ai', '📜 上次冒险的日记：' + lastSummary.summary.slice(0, 100));
+                    }
+                }
+                appendMessage('ai', '🏰 欢迎来到酒馆！在这里你就是冒险者，我是酒馆老板。有什么需要帮忙的吗？');
+            } else {
+                // 切回陪伴模式
+                chatMode = 'companion';
+                overlay.className = 'mode-companion show';
+                badge.textContent = '陪伴模式';
+                messages.innerHTML = '';
+                // 重新加载陪伴模式的对话
+                if (window.__chatStore) {
+                    const recent = window.__chatStore.history.slice(-20);
+                    for (const msg of recent) {
+                        appendMessage(msg.role, msg.content);
+                    }
+                }
+                appendMessage('ai', '我回来啦~ 刚才去酒馆转了一圈！');
+            }
+            
+            // 存模式到配置
+            if (window.electronAPI) {
+                window.electronAPI.saveConfig({ appMode: chatMode });
+            }
+        });
+
+        // ===== 日记生成（酒馆模式退出时） =====
+        async function generateDiary() {
+            if (chatMode !== 'tavern' || !diaryStore || diaryStore.history.length < 4) return;
+            try {
+                // 用 AI 生成日记
+                if (!chatAiClient) {
+                    chatAiClient = new AIChatClient();
+                    await chatAiClient.init();
+                }
+                const recentChat = diaryStore.history.slice(-20).map(m =>
+                    (m.role === 'user' ? '冒险者' : '酒馆老板') + ': ' + m.content
+                ).join('\n');
+                
+                const diaryPrompt = '你是一个酒馆老板，请用第一人称写一篇简短的冒险日记（100字左右），记录今天和冒险者的对话。风格要像奇幻小说的日记。对话如下：\n' + recentChat;
+                
+                const diary = await chatAiClient.callAPI([
+                    { role: 'system', content: '你是一个奇幻酒馆的老板，喜欢写日记记录每天遇到的冒险者。请用中文回应。' },
+                    { role: 'user', content: diaryPrompt }
+                ]);
+                
+                if (diary) {
+                    // 存进酒馆记忆
+                    diaryStore.add('assistant', '[日记] ' + diary);
+                    
+                    // 弹出日记
+                    const popup = document.getElementById('diary-popup');
+                    const content = document.getElementById('diary-content');
+                    content.innerHTML = '<h3>📜 冒险日记</h3><p>' + diary.replace(/\n/g, '<br>') + '</p><button id="diary-close-btn">已阅</button>';
+                    popup.classList.add('show');
+                    document.getElementById('diary-close-btn').addEventListener('click', () => {
+                        popup.classList.remove('show');
+                    });
+                }
+            } catch (e) {
+                console.warn('[Diary] 生成失败:', e.message);
+            }
+        }
+
+        // 拦截聊天框关闭/模式切换来触发日记
+        const origSendChat = window.sendChatMessage;
+        // 重写发送消息以支持模式
+        const origSendFn = sendChatMessage;
+        window.sendChatMessage = async function(text) {
+            if (chatMode === 'tavern' && diaryStore) {
+                // 酒馆模式用自己的记忆
+                const msg = text.trim();
+                if (!msg) return;
+                appendMessage('user', msg);
+                await diaryStore.add('user', msg);
+                showTyping(true);
+                try {
+                    if (!chatAiClient) {
+                        chatAiClient = new AIChatClient();
+                        await chatAiClient.init();
+                    }
+                    const ctx = diaryStore.getEnhancedContext(5);
+                    const msgs = [
+                        { role: 'system', content: '你是酒馆老板，一个神秘的奇幻世界酒馆的主人。用活泼、神秘、简短的方式回应冒险者，每次1-2句话。\n\n[酒馆记忆]\n' + ctx },
+                        { role: 'user', content: msg }
+                    ];
+                    const reply = await chatAiClient.callAPI(msgs);
+                    showTyping(false);
+                    appendMessage('ai', reply);
+                    await diaryStore.add('assistant', reply);
+                    if (window.electronAPI?.ttsSynthesize) {
+                        try {
+                            const tts = await window.electronAPI.ttsSynthesize(reply);
+                            if (tts?.success) new Audio('data:audio/wav;base64,' + tts.wav).play().catch(() => {});
+                        } catch(e) {}
+                    }
+                } catch(e) {
+                    showTyping(false);
+                    appendMessage('ai', '😅 酒馆今天有点忙... ' + e.message);
+                }
+                return;
+            }
+            // 陪伴模式走原来的逻辑
+            return origSendFn(text);
+        };
+
         // ===== 初始化聊天 =====
         initChat();
+
+        // 加载保存的模式
+        (async () => {
+            try {
+                if (window.electronAPI) {
+                    const cfg = await window.electronAPI.loadConfig();
+                    if (cfg.appMode === 'tavern') {
+                        chatMode = 'tavern';
+                        // 但不自动切换，让用户手动切换
+                    }
+                }
+            } catch(e) {}
+        })();
 
         // ========== Init ==========
         initModel();

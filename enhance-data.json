@@ -1,1 +1,76 @@
-"{}"  
+{
+  "conversationHistory": [
+    {
+      "role": "user",
+      "content": "我在调试Steam啊。",
+      "timestamp": 1784780532916
+    },
+    {
+      "role": "assistant",
+      "content": "加油加油！Steam出什么问题了吗？修好了我们一起玩游戏呀～ 🎮",
+      "timestamp": 1784780534831
+    },
+    {
+      "role": "assistant",
+      "content": "我记得你之前聊过Steam呢！我在调试Steam啊。...",
+      "timestamp": 1784780575486
+    }
+  ],
+  "memorySummaries": [],
+  "importantTopics": [
+    {
+      "topic": "我在调试",
+      "firstMentioned": 1784780532939,
+      "lastMentioned": 1784780532939,
+      "count": 1,
+      "examples": [
+        "我在调试Steam啊。"
+      ]
+    },
+    {
+      "topic": "Steam",
+      "firstMentioned": 1784780532939,
+      "lastMentioned": 1784780532939,
+      "count": 1,
+      "examples": [
+        "我在调试Steam啊。"
+      ]
+    },
+    {
+      "topic": "加油加油",
+      "firstMentioned": 1784780534854,
+      "lastMentioned": 1784780534854,
+      "count": 1,
+      "examples": [
+        "加油加油！Steam出什么问题了吗？修好了我们一起玩游戏呀～ 🎮"
+      ]
+    },
+    {
+      "topic": "出什么问题了吗",
+      "firstMentioned": 1784780534854,
+      "lastMentioned": 1784780534854,
+      "count": 1,
+      "examples": [
+        "加油加油！Steam出什么问题了吗？修好了我们一起玩游戏呀～ 🎮"
+      ]
+    },
+    {
+      "topic": "修好了我们一起玩游戏呀",
+      "firstMentioned": 1784780534854,
+      "lastMentioned": 1784780534854,
+      "count": 1,
+      "examples": [
+        "加油加油！Steam出什么问题了吗？修好了我们一起玩游戏呀～ 🎮"
+      ]
+    }
+  ],
+  "userPreferences": {
+    "name": "",
+    "likes": [],
+    "dislikes": [],
+    "habits": [],
+    "lastUpdated": 0
+  },
+  "lastSummaryIndex": 0,
+  "visualContexts": []
+}

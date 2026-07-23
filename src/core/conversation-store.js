@@ -33,8 +33,8 @@ class ConversationStore {
         try {
             if (window.electronAPI?.loadEnhanceData) {
                 const raw = await window.electronAPI.loadEnhanceData();
-                // 兼容新旧格式：新格式在 data.conversation 下，旧格式在顶层
-                const data = raw?.conversation || raw || {};
+                const key = this._saveKey || 'conversation';
+                const data = raw?.[key] || raw?.conversation || raw || {};
                 if (data?.conversationHistory) {
                     this.history = data.conversationHistory;
                     console.log(`[ConversationStore] Loaded ${this.history.length} messages`);
@@ -70,13 +70,16 @@ class ConversationStore {
             this._pruneOldTopics();
 
             if (window.electronAPI?.saveEnhanceData) {
+                const key = this._saveKey || 'conversation';
                 await window.electronAPI.saveEnhanceData({
-                    conversationHistory: trimmedHistory,
-                    memorySummaries: this.summaries.slice(-50),  // 最多保留50条总结
-                    importantTopics: this.importantTopics.slice(-30), // 最多30个话题
-                    userPreferences: this.userPreferences,
-                    lastSummaryIndex: this.lastSummaryIndex,
-                    visualContexts: this.visualContexts.slice(-20)
+                    [key]: {
+                        conversationHistory: trimmedHistory,
+                        memorySummaries: this.summaries.slice(-50),
+                        importantTopics: this.importantTopics.slice(-30),
+                        userPreferences: this.userPreferences,
+                        lastSummaryIndex: this.lastSummaryIndex,
+                        visualContexts: this.visualContexts.slice(-20)
+                    }
                 });
             }
         } catch (e) {
