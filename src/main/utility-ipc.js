@@ -85,6 +85,36 @@ function registerUtilityIPC(ctx, ipcMain, deps) {
         const fn = console[level] || console.log;
         fn.apply(console, args);
     });
+
+    // ---- Windows 本地语音识别（SAPI via PowerShell） ----
+    ipcMain.handle('stt-windows', async () => {
+        try {
+            const { execSync } = require('child_process');
+            const psScript = `$recognizer = New-Object -ComObject SAPI.SpRecognizer
+$audio = $recognizer.GetAudioInputs() | Select-Object -First 1
+$recognizer.AudioInput = $audio
+$context = $recognizer.CreateRecoContext()
+$grammar = $context.CreateGrammar()
+$grammar.DictationSetState(1)
+$result = $grammar.Recognize(5000)
+if ($result) { Write-Output $result.PhraseInfo.GetText() } else { Write-Output '__TIMEOUT__' }`;
+            const fs = require('fs');
+            const path = require('path');
+            const os = require('os');
+            const tmpFile = path.join(os.tmpdir(), 'live2dpet_stt_' + Date.now() + '.ps1');
+            fs.writeFileSync(tmpFile, psScript, 'utf-8');
+            const result = require('child_process').execSync(
+                'powershell -ExecutionPolicy Bypass -File "' + tmpFile + '"',
+                { timeout: 8000, encoding: 'utf-8', maxBuffer: 1024 * 1024 }
+            );
+            try { fs.unlinkSync(tmpFile); } catch(e) {}
+            const text = result.trim().split('\\n').filter(l => l.trim() && l !== '__TIMEOUT__').join(' ');
+            if (text) return { success: true, text: text };
+            return { success: false, error: 'no_speech' };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    });
 }
 
 module.exports = { registerUtilityIPC };

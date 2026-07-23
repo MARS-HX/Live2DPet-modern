@@ -74,6 +74,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ttsGetStatus: () => ipcRenderer.invoke('tts-get-status'),
     ttsRestart: () => ipcRenderer.invoke('tts-restart'),
     ttsDiagnose: () => ipcRenderer.invoke('tts-diagnose'),
+    sttWindows: () => ipcRenderer.invoke('stt-windows'),
     appRelaunch: () => ipcRenderer.invoke('app-relaunch'),
     ttsSetConfig: (config) => ipcRenderer.invoke('tts-set-config', config),
     ttsGetMetas: () => ipcRenderer.invoke('tts-get-metas'),
