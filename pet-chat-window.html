@@ -476,8 +476,11 @@ async function sendMessage(text) {
         try {
             if (!chatAiClient) { chatAiClient = new AIChatClient(); await chatAiClient.init(); window.__chatAiClient = chatAiClient; }
             const ctx = diaryStore.getEnhancedContext(5);
+            const persona = (currentPreset && currentPreset.systemPrompt) 
+                ? currentPreset.systemPrompt + '\n\n' 
+                : '你是酒馆老板，用1-2句话回应冒险者。\n\n';
             const msgs = [
-                { role: 'system', content: '你是酒馆老板，用1-2句话回应冒险者。\n\n[酒馆记忆]\n' + ctx },
+                { role: 'system', content: persona + '[酒馆记忆]\n' + ctx },
                 { role: 'user', content: msg }
             ];
             const reply = await chatAiClient.callAPI(msgs);
@@ -514,9 +517,14 @@ async function generateDiary() {
     if (chatMode !== 'tavern' || !diaryStore || diaryStore.history.length < 4) return;
     try {
         if (!chatAiClient) { chatAiClient = new AIChatClient(); await chatAiClient.init(); }
-        const recent = diaryStore.history.slice(-20).map(m => (m.role==='user'?'冒险者':'酒馆老板')+': '+m.content).join('\\n');
+        const userLabel = (currentPreset && currentPreset.userRole) || '冒险者';
+const aiLabel = (currentPreset && currentPreset.aiRole) || '酒馆老板';
+const recent = diaryStore.history.slice(-20).map(m => (m.role==='user'?userLabel:aiLabel)+': '+m.content).join('\\n');
+        const diaryPrompt = (currentPreset && currentPreset.diaryPrompt) 
+            ? currentPreset.diaryPrompt 
+            : '你是酒馆老板，写100字左右的冒险日记。';
         const diary = await chatAiClient.callAPI([
-            { role: 'system', content: '你是酒馆老板，写100字左右的冒险日记。' },
+            { role: 'system', content: diaryPrompt },
             { role: 'user', content: '对话：\n' + recent }
         ]);
         if (diary) {
@@ -526,10 +534,11 @@ async function generateDiary() {
             popup.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);z-index:999;display:flex;justify-content:center;align-items:center;';
             const box = document.createElement('div');
             box.style.cssText = 'background:white;border-radius:16px;padding:24px;max-width:360px;font-size:13px;line-height:1.8;box-shadow:0 8px 32px rgba(0,0,0,0.2);';
-            box.innerHTML = '<h3 style="color:#e75480;margin-bottom:12px;text-align:center;">📜 冒险日记</h3><p>' + diary.replace(/\\n/g, '<br>') + '</p><button id="diary-ok" style="display:block;margin:16px auto 0;padding:6px 24px;border:none;border-radius:20px;background:#e75480;color:white;cursor:pointer;">已阅</button>';
+            box.innerHTML = '<h3 style="color:#e75480;margin-bottom:12px;text-align:center;">📜 冒险日记</h3><p>' + diary.replace(/\\n/g, '<br>') + '</p><button style="display:block;margin:16px auto 0;padding:6px 24px;border:none;border-radius:20px;background:#e75480;color:white;cursor:pointer;">已阅</button>';
             popup.appendChild(box);
             document.body.appendChild(popup);
-            document.getElementById('diary-ok').onclick = () => popup.remove();
+            // 用 querySelector 找按钮，避免 id 冲突
+            popup.querySelector('button').onclick = () => popup.remove();
         }
     } catch(e) { console.warn('[Diary]', e.message); }
 }
