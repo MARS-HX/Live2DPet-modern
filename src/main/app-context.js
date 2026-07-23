@@ -12,7 +12,6 @@ class AppContext {
         this.characterData = { isLive2DActive: true, live2dModelPath: null };
         this.pathUtils = null;
         this.ttsService = null;
-        this.translationService = null;
         this._cachedLang = 'en';
     }
 }

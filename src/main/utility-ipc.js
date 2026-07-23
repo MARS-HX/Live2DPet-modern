@@ -15,16 +15,6 @@ function registerUtilityIPC(ctx, ipcMain, deps) {
     ipcMain.handle('save-config', async (event, data) => {
         if (data.uiLanguage) ctx._cachedLang = data.uiLanguage;
         const result = await configManager.saveConfigFile(data);
-        // Reconfigure translation service when translation settings change
-        if (data.translation && ctx.translationService) {
-            const config = await configManager.loadConfigFile();
-            const tl = config.translation || {};
-            ctx.translationService.configure({
-                apiKey: tl.apiKey || config.apiKey,
-                baseURL: tl.baseURL || config.baseURL || 'https://openrouter.ai/api/v1',
-                modelName: tl.modelName || config.modelName || 'x-ai/grok-4.1-fast'
-            });
-        }
         // Notify pet window to hot-reload model config
         if (data.model && ctx.petWindow && !ctx.petWindow.isDestroyed()) {
             const config = await configManager.loadConfigFile();

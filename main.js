@@ -26,7 +26,6 @@ const { registerDefaultAudioIPC } = require('./src/main/default-audio-ipc');
 const { registerModelImport } = require('./src/main/model-import');
 const { createPathUtils } = require('./src/utils/path-utils');
 const { TTSService } = require('./src/core/tts-service');
-const { TranslationService } = require('./src/core/translation-service');
 
 const ctx = new AppContext();
 const configManager = createConfigManager(app);
@@ -78,7 +77,6 @@ app.whenReady().then(async () => {
 
     // 初始化 TTS
     ctx.ttsService = new TTSService();
-    ctx.translationService = new TranslationService();
 
     createSettingsWindow();
     trayManager.createTray();
@@ -118,14 +116,6 @@ app.whenReady().then(async () => {
         }
         console.log(`[TTS] ${initSuccess ? 'Initialized' : 'Not available'} with backend: ${serviceType}`);
 
-        if (config.apiKey) {
-            const tl = config.translation || {};
-            ctx.translationService.configure({
-                apiKey: tl.apiKey || config.apiKey,
-                baseURL: tl.baseURL || config.baseURL || 'https://openrouter.ai/api/v1',
-                modelName: tl.modelName || config.modelName || 'x-ai/grok-4.1-fast'
-            });
-        }
     });
 });
 

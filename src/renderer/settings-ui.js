@@ -89,12 +89,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             document.getElementById('screenshot-interval').value = fileConfig.screenshotInterval;
             petSystem.screenshotInterval = parseInt(fileConfig.screenshotInterval);
         }
-        // Load translation API config
-        if (fileConfig.translation) {
-            document.getElementById('tl-api-url').value = fileConfig.translation.baseURL || '';
-            document.getElementById('tl-api-key').value = fileConfig.translation.apiKey || '';
-            document.getElementById('tl-model-name').value = fileConfig.translation.modelName || '';
-        }
+
         // Load model config
         currentModelConfig = fileConfig.model || { type: 'none' };
         loadModelUI();
@@ -140,16 +135,6 @@ document.getElementById('btn-save-api').addEventListener('click', () => {
 });
 
 // ========== Translation API Settings ==========
-document.getElementById('btn-save-tl').addEventListener('click', () => {
-    const tl = {
-        baseURL: document.getElementById('tl-api-url').value.trim(),
-        apiKey: document.getElementById('tl-api-key').value.trim(),
-        modelName: document.getElementById('tl-model-name').value.trim()
-    };
-    if (window.electronAPI) window.electronAPI.saveConfig({ translation: tl });
-    showStatus('tl-status', t('status.saved'), 'success');
-});
-
 document.getElementById('btn-test-api').addEventListener('click', async () => {
     showStatus('api-status', t('status.testing'), 'info');
     const result = await petSystem.aiClient.testConnection();
