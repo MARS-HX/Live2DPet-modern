@@ -43,7 +43,10 @@
       "config.json",
       "src/**/*",
       "assets/**/*",
-      "libs/**/*"
+      "libs/**/*",
+      "pet-chat-window.html",
+      "使用说明.md",
+      "presets/**/*"
     ],
     "asarUnpack": [
       "node_modules/koffi/**"

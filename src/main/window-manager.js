@@ -255,15 +255,20 @@ function registerWindowHandlers(ctx, ipcMain, deps) {
                 webPreferences: {
                     nodeIntegration: false,
                     contextIsolation: true,
-                    preload: deps.path.join(deps.basePath, 'preload.js')
+                    preload: deps.path.join(deps.basePath, 'preload.js'),
+                    webSecurity: false
                 }
             });
             ctx.chatWindow.setAlwaysOnTop(true, 'screen-saver');
+            applyCSP(ctx.chatWindow);
+            console.log('[ChatWindow] Loading:', deps.path.join(deps.basePath, 'pet-chat-window.html'));
             await ctx.chatWindow.loadFile(deps.path.join(deps.basePath, 'pet-chat-window.html'));
             ctx.chatWindow.on('closed', () => { ctx.chatWindow = null; });
             ctx.chatWindow.show();
+            console.log('[ChatWindow] Opened successfully');
             return { success: true };
         } catch (error) {
+            console.error('[ChatWindow] Failed:', error.message);
             return { success: false, error: error.message };
         }
     });
