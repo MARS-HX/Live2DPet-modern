@@ -304,7 +304,29 @@
             <div id="chat-drag-handle">
                 <span>💬 聊天</span>
                 <span class="chat-mode-badge" id="chat-mode-toggle" title="点击切换模式">陪伴模式</span>
+                <select id="preset-select" style="display:none;font-size:10px;padding:1px 4px;border-radius:4px;border:1px solid #ddd;max-width:80px;">
+                    <option value="">加载预设...</option>
+                </select>
+                <span id="preset-edit-btn" style="display:none;font-size:11px;cursor:pointer;color:#e75480;" title="编辑预设">✏️</span>
+                <span id="preset-export-btn" style="display:none;font-size:11px;cursor:pointer;color:#666;" title="导出预设">📤</span>
+                <span id="preset-import-btn" style="display:none;font-size:11px;cursor:pointer;color:#666;" title="导入预设">📥</span>
                 <button id="chat-close-btn">✕</button>
+            </div>
+            <!-- 预设编辑弹窗 -->
+            <div id="preset-editor" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:380px;max-height:500px;background:white;border-radius:12px;padding:16px;z-index:999;box-shadow:0 8px 32px rgba(0,0,0,0.2);overflow-y:auto;">
+                <h4 style="margin:0 0 8px;color:#e75480;">✏️ 编辑预设</h4>
+                <label style="font-size:11px;">名称</label><input id="pe-name" style="width:100%;padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;margin-bottom:6px;">
+                <label style="font-size:11px;">描述</label><input id="pe-desc" style="width:100%;padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;margin-bottom:6px;">
+                <label style="font-size:11px;">你的角色</label><input id="pe-user-role" style="width:100%;padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;margin-bottom:6px;">
+                <label style="font-size:11px;">AI 角色</label><input id="pe-ai-role" style="width:100%;padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;margin-bottom:6px;">
+                <label style="font-size:11px;">开场白</label><input id="pe-greeting" style="width:100%;padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;margin-bottom:6px;">
+                <label style="font-size:11px;">AI 人格设定</label><textarea id="pe-system-prompt" rows="3" style="width:100%;padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;margin-bottom:6px;resize:vertical;"></textarea>
+                <label style="font-size:11px;">世界观</label><textarea id="pe-world" rows="3" style="width:100%;padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;margin-bottom:6px;resize:vertical;"></textarea>
+                <label style="font-size:11px;">日记提示词</label><textarea id="pe-diary-prompt" rows="2" style="width:100%;padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;margin-bottom:6px;resize:vertical;"></textarea>
+                <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:8px;">
+                    <button id="pe-save" class="chat-btn" style="background:#e75480;color:white;width:auto;padding:4px 16px;border-radius:16px;font-size:12px;">保存</button>
+                    <button id="pe-cancel" class="chat-btn" style="background:#eee;color:#666;width:auto;padding:4px 16px;border-radius:16px;font-size:12px;">取消</button>
+                </div>
             </div>
             <div id="chat-messages"></div>
             <div id="typing-indicator">💭 正在输入...</div>
@@ -1178,32 +1200,47 @@
                 badge.textContent = '🏰 酒馆模式';
                 messages.innerHTML = ''; // 清空聊天显示
                 
+                // 显示预设控件
+                document.getElementById('preset-select').style.display = '';
+                document.getElementById('preset-edit-btn').style.display = '';
+                document.getElementById('preset-export-btn').style.display = '';
+                document.getElementById('preset-import-btn').style.display = '';
+                await loadPresetList();
+                
                 // 加载酒馆独立记忆
                 if (!diaryStore && typeof ConversationStore !== 'undefined') {
                     diaryStore = new ConversationStore();
                     diaryStore.maxEntries = 100;
-                    // 用不同的存储 key
                     diaryStore._saveKey = 'tavernHistory';
                     await diaryStore.load();
-                    // 加载历史消息到界面
                     const recent = diaryStore.history.slice(-20);
                     for (const msg of recent) {
                         appendMessage(msg.role, msg.content);
                     }
-                    // 显示上次的日记摘要
                     if (diaryStore.summaries.length > 0) {
                         const lastSummary = diaryStore.summaries[diaryStore.summaries.length - 1];
                         appendMessage('ai', '📜 上次冒险的日记：' + lastSummary.summary.slice(0, 100));
                     }
                 }
-                appendMessage('ai', '🏰 欢迎来到酒馆！在这里你就是冒险者，我是酒馆老板。有什么需要帮忙的吗？');
+                // 如果有当前预设，应用它
+                if (currentPreset) {
+                    // 已加载，不用重复
+                } else {
+                    appendMessage('ai', '🏰 欢迎来到酒馆！你可以点击上方的预设列表加载一个世界设定~');
+                }
             } else {
-                // 切回陪伴模式
+                // 切回陪伴模式 → 先生成日记
+                await generateDiary();
+                
                 chatMode = 'companion';
                 overlay.className = 'mode-companion show';
                 badge.textContent = '陪伴模式';
+                // 隐藏预设控件
+                document.getElementById('preset-select').style.display = 'none';
+                document.getElementById('preset-edit-btn').style.display = 'none';
+                document.getElementById('preset-export-btn').style.display = 'none';
+                document.getElementById('preset-import-btn').style.display = 'none';
                 messages.innerHTML = '';
-                // 重新加载陪伴模式的对话
                 if (window.__chatStore) {
                     const recent = window.__chatStore.history.slice(-20);
                     for (const msg of recent) {
@@ -1218,6 +1255,201 @@
                 window.electronAPI.saveConfig({ appMode: chatMode });
             }
         });
+
+        // ===== 预设管理 =====
+        let currentPreset = null;
+        const PRESET_DIR = 'presets/';
+
+        // 加载预设列表
+        async function loadPresetList() {
+            const sel = document.getElementById('preset-select');
+            if (!sel) return;
+            sel.innerHTML = '<option value="">加载预设...</option>';
+            try {
+                // 尝试从预设目录加载
+                const builtinPresets = ['fantasy-tavern', 'cyber-bar', 'xianxia-tavern'];
+                for (const name of builtinPresets) {
+                    const opt = document.createElement('option');
+                    opt.value = name;
+                    opt.textContent = name;
+                    sel.appendChild(opt);
+                }
+                // 从 localStorage 加载用户自定义预设
+                try {
+                    const userPresets = JSON.parse(localStorage.getItem('live2dpet_presets') || '[]');
+                    for (const p of userPresets) {
+                        if (p && p.name) {
+                            const opt = document.createElement('option');
+                            opt.value = '__user__' + p.name;
+                            opt.textContent = '⭐ ' + p.name;
+                            sel.appendChild(opt);
+                        }
+                    }
+                } catch(e) {}
+            } catch(e) { console.warn('[Preset] 列表加载失败:', e); }
+        }
+
+        // 加载预设文件
+        async function applyPreset(presetName) {
+            let preset = null;
+            try {
+                if (presetName.startsWith('__user__')) {
+                    // 用户自定义预设
+                    const userPresets = JSON.parse(localStorage.getItem('live2dpet_presets') || '[]');
+                    preset = userPresets.find(p => p.name === presetName.replace('__user__', ''));
+                } else {
+                    // 内置预设 - 用 fetch 加载
+                    const res = await fetch(PRESET_DIR + presetName + '.json');
+                    if (res.ok) preset = await res.json();
+                }
+            } catch(e) { console.warn('[Preset] 加载失败:', presetName, e.message); }
+            
+            if (!preset) {
+                appendMessage('ai', '😅 预设加载失败了...');
+                return;
+            }
+            
+            currentPreset = preset;
+            // 存到配置
+            try {
+                if (window.electronAPI) {
+                    window.electronAPI.saveConfig({ tavernPreset: presetName });
+                }
+            } catch(e) {}
+            
+            // 应用预设到酒馆模式
+            if (chatMode === 'tavern' && diaryStore) {
+                diaryStore.history = [];
+                diaryStore.summaries = [];
+                const msgContainer = document.getElementById('chat-messages');
+                if (msgContainer) msgContainer.innerHTML = '';
+                
+                const greeting = preset.greeting || '🏰 欢迎来到酒馆！';
+                appendMessage('ai', '📜 ' + (preset.description || '') + '\n🌍 ' + (preset.worldBuilding || ''));
+                appendMessage('ai', greeting);
+                
+                // 存开场到记忆
+                await diaryStore.add('assistant', greeting);
+            }
+        }
+
+        // 预设选择事件
+        document.getElementById('preset-select')?.addEventListener('change', async (e) => {
+            if (e.target.value) await applyPreset(e.target.value);
+            e.target.value = '';
+        });
+
+        // 编辑预设
+        document.getElementById('preset-edit-btn')?.addEventListener('click', () => {
+            const editor = document.getElementById('preset-editor');
+            if (!editor || !currentPreset) return;
+            document.getElementById('pe-name').value = currentPreset.name || '';
+            document.getElementById('pe-desc').value = currentPreset.description || '';
+            document.getElementById('pe-user-role').value = currentPreset.userRole || '冒险者';
+            document.getElementById('pe-ai-role').value = currentPreset.aiRole || '酒馆老板';
+            document.getElementById('pe-greeting').value = currentPreset.greeting || '';
+            document.getElementById('pe-system-prompt').value = currentPreset.systemPrompt || '';
+            document.getElementById('pe-world').value = currentPreset.worldBuilding || '';
+            document.getElementById('pe-diary-prompt').value = currentPreset.diaryPrompt || '';
+            editor.style.display = 'block';
+        });
+
+        document.getElementById('pe-cancel')?.addEventListener('click', () => {
+            document.getElementById('preset-editor').style.display = 'none';
+        });
+
+        document.getElementById('pe-save')?.addEventListener('click', async () => {
+            const editor = document.getElementById('preset-editor');
+            const updated = {
+                name: document.getElementById('pe-name').value || '自定义预设',
+                description: document.getElementById('pe-desc').value || '',
+                version: 1,
+                author: '用户自定义',
+                systemPrompt: document.getElementById('pe-system-prompt').value || '你是酒馆老板...',
+                userRole: document.getElementById('pe-user-role').value || '冒险者',
+                aiRole: document.getElementById('pe-ai-role').value || '酒馆老板',
+                greeting: document.getElementById('pe-greeting').value || '欢迎！',
+                diaryPrompt: document.getElementById('pe-diary-prompt').value || '请写一篇日记...',
+                worldBuilding: document.getElementById('pe-world').value || ''
+            };
+            
+            // 保存到 localStorage
+            try {
+                const userPresets = JSON.parse(localStorage.getItem('live2dpet_presets') || '[]');
+                const idx = userPresets.findIndex(p => p.name === updated.name);
+                if (idx >= 0) userPresets[idx] = updated;
+                else userPresets.push(updated);
+                localStorage.setItem('live2dpet_presets', JSON.stringify(userPresets));
+            } catch(e) {}
+            
+            currentPreset = updated;
+            editor.style.display = 'none';
+            await loadPresetList();
+            appendMessage('ai', '✅ 预设已保存！');
+        });
+
+        // 导出预设
+        document.getElementById('preset-export-btn')?.addEventListener('click', () => {
+            if (!currentPreset) return;
+            const blob = new Blob([JSON.stringify(currentPreset, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = (currentPreset.name || 'tavern-preset') + '.json';
+            a.click();
+            URL.revokeObjectURL(url);
+            appendMessage('ai', '📤 预设已导出！');
+        });
+
+        // 导入预设
+        document.getElementById('preset-import-btn')?.addEventListener('click', () => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json';
+            input.onchange = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                try {
+                    const text = await file.text();
+                    const preset = JSON.parse(text);
+                    if (!preset.name || !preset.systemPrompt) {
+                        appendMessage('ai', '😅 无效的预设文件！');
+                        return;
+                    }
+                    // 保存到 localStorage
+                    const userPresets = JSON.parse(localStorage.getItem('live2dpet_presets') || '[]');
+                    const idx = userPresets.findIndex(p => p.name === preset.name);
+                    if (idx >= 0) userPresets[idx] = preset;
+                    else userPresets.push(preset);
+                    localStorage.setItem('live2dpet_presets', JSON.stringify(userPresets));
+                    
+                    await loadPresetList();
+                    currentPreset = preset;
+                    // 自动应用
+                    if (chatMode === 'tavern') {
+                        const greeting = preset.greeting || '🏰 欢迎！';
+                        if (document.getElementById('chat-messages')) {
+                            document.getElementById('chat-messages').innerHTML = '';
+                        }
+                        appendMessage('ai', '📜 ' + (preset.description || '') + (preset.worldBuilding ? '\n🌍 ' + preset.worldBuilding : ''));
+                        appendMessage('ai', greeting);
+                        if (diaryStore) await diaryStore.add('assistant', greeting);
+                    }
+                    appendMessage('ai', '✅ 预设 "' + preset.name + '" 已导入并应用！');
+                } catch(err) {
+                    appendMessage('ai', '😅 导入失败: ' + err.message);
+                }
+            };
+            input.click();
+        });
+
+        // 修改模式切换函数，显示/隐藏预设控件
+        const origModeToggle = document.getElementById('chat-mode-toggle')?.click;
+        // 重写模式切换中显示预设选择
+        const _origToggleHandler = document.getElementById('chat-mode-toggle');
+        if (_origToggleHandler) {
+            const oldHandler = _origToggleHandler._listeners ? true : false;
+        }
 
         // ===== 日记生成（酒馆模式退出时） =====
         async function generateDiary() {
