@@ -144,7 +144,29 @@ function registerTTSIPC(ctx, ipcMain, deps) {
             degradedAt: svc?.degradedAt || 0,
             retryInterval: svc?.retryInterval || 60000,
             serviceType: 'mimo',
-            translationConfigured: false   // translation is removed
+            translationConfigured: false
+        };
+    });
+
+    // TTS 诊断接口
+    ipcMain.handle('tts-diagnose', async () => {
+        const svc = ctx.ttsService;
+        return {
+            serviceExists: !!svc,
+            initialized: svc?.initialized || false,
+            degraded: svc?.degraded || false,
+            degradedAt: svc?.degradedAt || 0,
+            failCount: svc?.failCount || 0,
+            maxFails: svc?.maxFails || 3,
+            retryInterval: svc?.retryInterval || 60000,
+            config: svc?.mimoConfig ? {
+                hasBaseURL: !!svc.mimoConfig.baseURL,
+                hasApiKey: !!svc.mimoConfig.apiKey,
+                model: svc.mimoConfig.model,
+                format: svc.mimoConfig.format,
+            } : null,
+            isAvailable: svc?.isAvailable ? svc.isAvailable() : false,
+            circuitBroken: svc?.degraded ? (Date.now() - (svc.degradedAt || 0) < (svc.retryInterval || 60000)) : false
         };
     });
 
