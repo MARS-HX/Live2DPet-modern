@@ -30,6 +30,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     openDevTools: () => ipcRenderer.invoke('open-dev-tools'),
     getAppPath: () => ipcRenderer.invoke('get-app-path'),
     showSettings: () => ipcRenderer.invoke('show-settings'),
+    createChatWindow: () => ipcRenderer.invoke('create-chat-window'),
+    closeChatWindow: () => ipcRenderer.invoke('close-chat-window'),
     loadConfig: () => ipcRenderer.invoke('load-config'),
     saveConfig: (data) => ipcRenderer.invoke('save-config', data),
     getCursorPosition: () => ipcRenderer.invoke('get-cursor-position'),

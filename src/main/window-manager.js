@@ -235,6 +235,47 @@ function registerWindowHandlers(ctx, ipcMain, deps) {
         }
     });
 
+    // ---- 独立聊天窗口 ----
+    ipcMain.handle('create-chat-window', async () => {
+        try {
+            if (ctx.chatWindow && !ctx.chatWindow.isDestroyed()) {
+                ctx.chatWindow.focus();
+                return { success: true };
+            }
+            const petBounds = ctx.petWindow ? ctx.petWindow.getBounds() : { x: 100, y: 100 };
+            ctx.chatWindow = new deps.BrowserWindow({
+                width: 320, height: 420,
+                x: petBounds.x + petBounds.width + 10,
+                y: petBounds.y,
+                frame: false,
+                alwaysOnTop: true, resizable: true,
+                minimizable: true, maximizable: false,
+                fullscreenable: false,
+                show: false,
+                webPreferences: {
+                    nodeIntegration: false,
+                    contextIsolation: true,
+                    preload: deps.path.join(deps.basePath, 'preload.js')
+                }
+            });
+            ctx.chatWindow.setAlwaysOnTop(true, 'screen-saver');
+            await ctx.chatWindow.loadFile(deps.path.join(deps.basePath, 'pet-chat-window.html'));
+            ctx.chatWindow.on('closed', () => { ctx.chatWindow = null; });
+            ctx.chatWindow.show();
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    });
+    ipcMain.handle('close-chat-window', async () => {
+        try {
+            if (ctx.chatWindow && !ctx.chatWindow.isDestroyed()) ctx.chatWindow.close();
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    });
+
     return { createSettingsWindow };
 }
 
