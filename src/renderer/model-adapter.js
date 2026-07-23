@@ -264,9 +264,8 @@ class Live2DAdapter extends ModelAdapter {
 
     setCanvasY(val) {
         if (this.config) this.config.canvasYRatio = val;
-        if (this.app && this.model) {
-            this.model.y = this.app.screen.height * val;
-        }
+        // 调用 _fitModel 完整重新计算位置（含缩放和 X 坐标）
+        this._fitModel();
     }
 }
 
