@@ -44,6 +44,22 @@ document.getElementById('lang-select').addEventListener('change', (e) => {
     setLanguage(e.target.value);
 });
 
+// ========== 主题切换 ==========
+function initTheme() {
+    const saved = localStorage.getItem('live2dpet_theme');
+    if (saved === 'dark') document.body.classList.add('dark');
+    // 默认跟随系统
+    if (saved === null && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.body.classList.add('dark');
+    }
+}
+initTheme();
+
+document.getElementById('theme-toggle')?.addEventListener('click', () => {
+    document.body.classList.toggle('dark');
+    localStorage.setItem('live2dpet_theme', document.body.classList.contains('dark') ? 'dark' : 'light');
+});
+
 document.addEventListener('DOMContentLoaded', async () => {
     petSystem = new DesktopPetSystem();
     await petSystem.init();
