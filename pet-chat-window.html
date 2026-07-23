@@ -138,6 +138,7 @@ let chatStore = null;
 let chatMode = 'companion';
 let diaryStore = null;
 let currentPreset = null;
+let tavernTTSEnabled = true;
 
 async function init() {
     // 同步设置页的主题
@@ -267,7 +268,7 @@ document.getElementById('mode-toggle').addEventListener('click', async () => {
             }
         }
         // TTS 开关（酒馆模式）
-        let tavernTTSEnabled = localStorage.getItem('live2dpet_tavern_tts') !== 'off';
+        tavernTTSEnabled = localStorage.getItem('live2dpet_tavern_tts') !== 'off';
         const ttsBtn = document.getElementById('tts-toggle-tavern');
         if (ttsBtn) {
             ttsBtn.textContent = tavernTTSEnabled ? '🔊' : '🔇';
