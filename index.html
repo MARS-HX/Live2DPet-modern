@@ -205,7 +205,7 @@
         <button class="tab-btn" data-tab="emotion" data-i18n="tab.emotion">Emotion</button>
         <button class="tab-btn" data-tab="tts" data-i18n="tab.tts">TTS & Voice</button>
         <button class="tab-btn" data-tab="prompt" data-i18n="tab.prompt">Prompt</button>
-        <button class="tab-btn" data-tab="tavern">🏰 酒馆</button>
+        <button class="tab-btn" data-tab="tavern" data-i18n="tab.tavern">Tavern</button>
     </div>
 
     <!-- Settings Tab -->
@@ -238,9 +238,9 @@
     </div>
     <div class="card">
         <h2 data-i18n="detect.title">Detection Settings</h2>
-        <label data-i18n="detect.interval">AI检测间隔（秒）</label>
+        <label data-i18n="detect.interval">AI Detection Interval (sec)</label>
         <input type="number" id="interval" value="30" min="10" max="300">
-        <label data-i18n="detect.chatGap">回复间隔（秒）</label>
+        <label data-i18n="detect.chatGap">Chat Gap (sec)</label>
         <input type="number" id="chat-gap" value="5" min="0" max="60">
         <label>截图间隔（秒，0=每次检测都截）</label>
         <input type="number" id="screenshot-interval" value="0" min="0" max="600" style="margin-bottom:4px;">
@@ -578,37 +578,37 @@
     <!-- 酒馆预设配置 -->
     <div id="tab-tavern" class="tab-content">
         <div class="card">
-            <h2>🏰 酒馆模式预设管理</h2>
-            <p style="font-size:12px;color:#888;margin-bottom:8px;">管理酒馆模式的世界观、角色和对话设定。</p>
+            <h2 data-i18n="tavern.title">Tavern Mode Presets</h2>
+            <p style="font-size:12px;color:#888;margin-bottom:8px;" data-i18n="tavern.desc">Manage world settings, characters and dialogue for Tavern mode.</p>
             <div style="display:flex;gap:6px;margin-bottom:12px;">
-                <button class="btn btn-primary" id="btn-preset-new">➕ 新建预设</button>
-                <button class="btn btn-secondary" id="btn-preset-import">📥 导入 JSON</button>
+                <button class="btn btn-primary" id="btn-preset-new" data-i18n="tavern.new">New Preset</button>
+                <button class="btn btn-secondary" id="btn-preset-import" data-i18n="tavern.import">Import JSON</button>
             </div>
             <div id="preset-list" style="margin-bottom:12px;">
-                <label>已保存的预设：</label>
+                <label data-i18n="tavern.saved">Saved Presets</label>
                 <select id="preset-selector" style="width:100%;margin-bottom:6px;">
-                    <option value="">-- 选择预设 --</option>
+                    <option value="" data-i18n="tavern.select">-- Select Preset --</option>
                 </select>
                 <div style="display:flex;gap:6px;">
-                    <button class="btn btn-secondary btn-sm" id="btn-preset-apply">应用</button>
-                    <button class="btn btn-secondary btn-sm" id="btn-preset-edit">编辑</button>
-                    <button class="btn btn-secondary btn-sm" id="btn-preset-export">导出</button>
-                    <button class="btn btn-danger btn-sm" id="btn-preset-delete">删除</button>
+                    <button class="btn btn-secondary btn-sm" id="btn-preset-apply" data-i18n="tavern.apply">Apply</button>
+                    <button class="btn btn-secondary btn-sm" id="btn-preset-edit" data-i18n="tavern.edit">Edit</button>
+                    <button class="btn btn-secondary btn-sm" id="btn-preset-export" data-i18n="tavern.export">Export</button>
+                    <button class="btn btn-danger btn-sm" id="btn-preset-delete" data-i18n="tavern.delete">Delete</button>
                 </div>
             </div>
-            <div id="preset-editor" style="display:none;border-top:1px solid #eee;padding-top:12px;margin-top:8px;">
-                <h3 style="font-size:14px;color:#e75480;margin-bottom:8px;">✏️ 编辑预设</h3>
-                <label>名称</label><input type="text" id="pe-name" style="width:100%;margin-bottom:6px;">
-                <label>描述</label><input type="text" id="pe-desc" style="width:100%;margin-bottom:6px;">
-                <label>你的角色</label><input type="text" id="pe-user-role" value="冒险者" style="width:100%;margin-bottom:6px;">
-                <label>AI 角色</label><input type="text" id="pe-ai-role" value="酒馆老板" style="width:100%;margin-bottom:6px;">
-                <label>开场白</label><input type="text" id="pe-greeting" style="width:100%;margin-bottom:6px;">
-                <label>AI 人格设定</label><textarea id="pe-system-prompt" rows="3" style="width:100%;margin-bottom:6px;"></textarea>
-                <label>世界观</label><textarea id="pe-world" rows="3" style="width:100%;margin-bottom:6px;"></textarea>
-                <label>日记提示词</label><textarea id="pe-diary-prompt" rows="2" style="width:100%;margin-bottom:6px;"></textarea>
+            <div id="preset-editor" style="display:none;border-top:1px solid var(--card-border);padding-top:12px;margin-top:8px;">
+                <h3 style="font-size:14px;color:#e75480;margin-bottom:8px;" data-i18n="tavern.editor">Edit Preset</h3>
+                <label data-i18n="tavern.name">Name</label><input type="text" id="pe-name" style="width:100%;margin-bottom:6px;">
+                <label data-i18n="tavern.descLabel">Description</label><input type="text" id="pe-desc" style="width:100%;margin-bottom:6px;">
+                <label data-i18n="tavern.userRole">Your Role</label><input type="text" id="pe-user-role" value="Adventurer" style="width:100%;margin-bottom:6px;">
+                <label data-i18n="tavern.aiRole">AI Role</label><input type="text" id="pe-ai-role" value="Innkeeper" style="width:100%;margin-bottom:6px;">
+                <label data-i18n="tavern.greeting">Greeting</label><input type="text" id="pe-greeting" style="width:100%;margin-bottom:6px;">
+                <label data-i18n="tavern.systemPrompt">AI Persona</label><textarea id="pe-system-prompt" rows="3" style="width:100%;margin-bottom:6px;"></textarea>
+                <label data-i18n="tavern.world">World Building</label><textarea id="pe-world" rows="3" style="width:100%;margin-bottom:6px;"></textarea>
+                <label data-i18n="tavern.diaryPrompt">Diary Prompt</label><textarea id="pe-diary-prompt" rows="2" style="width:100%;margin-bottom:6px;"></textarea>
                 <div style="display:flex;gap:6px;margin-top:8px;">
-                    <button class="btn btn-primary" id="btn-preset-save">💾 保存</button>
-                    <button class="btn btn-secondary" id="btn-preset-cancel">取消</button>
+                    <button class="btn btn-primary" id="btn-preset-save" data-i18n="tavern.save">Save</button>
+                    <button class="btn btn-secondary" id="btn-preset-cancel" data-i18n="tavern.cancel">Cancel</button>
                 </div>
                 <div class="status" id="preset-status"></div>
             </div>

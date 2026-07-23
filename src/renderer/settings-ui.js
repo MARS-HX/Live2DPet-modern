@@ -1506,7 +1506,7 @@ document.getElementById('btn-preset-save')?.addEventListener('click', () => {
         if (idx >= 0) userPresets[idx] = preset;
         else userPresets.push(preset);
         localStorage.setItem('live2dpet_presets', JSON.stringify(userPresets));
-        showStatus('preset-status', '预设 "' + preset.name + '" 已保存！', 'success');
+        showStatus('preset-status', t('tavern.savedMsg'), 'success');
         loadPresetList();
     } catch(e) { showStatus('preset-status', '保存失败: ' + e.message, 'error'); }
 });
@@ -1583,7 +1583,7 @@ document.getElementById('btn-preset-apply')?.addEventListener('click', async () 
     if (!preset) return;
     // 保存到 localStorage 作为当前使用的预设
     localStorage.setItem('live2dpet_current_preset', JSON.stringify(preset));
-    showStatus('preset-status', '预设 "' + preset.name + '" 已应用，打开酒馆模式即可使用！', 'success');
+    showStatus('preset-status', t('tavern.appliedMsg'), 'success');
 });
 
 // 页面加载时初始化预设列表

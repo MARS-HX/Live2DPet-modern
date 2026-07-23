@@ -5,14 +5,14 @@
 const I18N = {
   en: {
     'lang.label': 'Language',
-    'tab.settings': 'Settings', 'tab.model': 'Model', 'tab.emotion': 'Emotion', 'tab.tts': 'TTS', 'tab.prompt': 'Prompt', 'tab.enhance': 'Enhance',
+    'tab.settings': 'Settings', 'tab.model': 'Model', 'tab.emotion': 'Emotion', 'tab.tts': 'TTS', 'tab.prompt': 'Prompt', 'tab.tavern': 'Tavern', 'tab.enhance': 'Enhance',
     'api.title': 'API Configuration',
     'api.hint': 'Tip: Register at openrouter.ai and go to openrouter.ai/keys to create an API Key. Supports many models including Grok, Gemini, etc.',
     'api.baseUrl': 'API Base URL', 'api.key': 'API Key', 'api.model': 'Model Name',
     'btn.save': 'Save', 'btn.test': 'Test',
     'detect.title': 'Detection Settings',
-    'detect.interval': 'API send frequency (sec)',
-    'detect.chatGap': 'Min chat gap (sec)',
+    'detect.interval': 'AI Detection Interval (sec)',
+    'detect.chatGap': 'Chat Gap (sec)',
     'btn.start': 'Start Pet', 'btn.stop': 'Stop Pet',
     'footer.text': 'Open source & free. Get the latest version on',
     'footer.star': 'GitHub',
@@ -248,7 +248,7 @@ const I18N = {
   },
   zh: {
     'lang.label': '语言',
-    'tab.settings': '设置', 'tab.model': '模型', 'tab.emotion': '表情', 'tab.tts': 'TTS', 'tab.prompt': 'Prompt', 'tab.enhance': '增强',
+    'tab.settings': '设置', 'tab.model': '模型', 'tab.emotion': '表情', 'tab.tts': 'TTS', 'tab.prompt': 'Prompt', 'tab.tavern': '酒馆', 'tab.enhance': '增强',
     'api.title': 'API 配置',
     'api.hint': '提示：前往 openrouter.ai 注册账号，在 openrouter.ai/keys 创建 API Key。支持 Grok、Gemini 等多种模型',
     'api.baseUrl': 'API Base URL', 'api.key': 'API Key', 'api.model': '模型名称',
@@ -491,7 +491,7 @@ const I18N = {
   },
   ja: {
     'lang.label': '言語',
-    'tab.settings': '設定', 'tab.model': 'モデル', 'tab.emotion': '表情', 'tab.tts': 'TTS', 'tab.prompt': 'プロンプト', 'tab.enhance': '拡張',
+    'tab.settings': '設定', 'tab.model': 'モデル', 'tab.emotion': '表情', 'tab.tts': 'TTS', 'tab.prompt': 'プロンプト', 'tab.tavern': '酒場', 'tab.enhance': '拡張',
     'api.title': 'API 設定',
     'api.hint': 'ヒント：OpenRouter などのアグリゲーションプラットフォームで API キーを取得し、openrouter.ai/keys で作成できます',
     'api.baseUrl': 'API ベース URL', 'api.key': 'API キー', 'api.model': 'モデル名',
