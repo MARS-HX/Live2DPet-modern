@@ -80,7 +80,8 @@ class AliyunProvider {
         const voice = this.config.voice || 'zhiyue';
         
         return new Promise((resolve, reject) => {
-            const ws = new WebSocket('wss://dashscope.aliyuncs.com/api/v1/services/tts/text-to-speech/ws', {
+            const ws = new (require('ws'))('wss://dashscope.aliyuncs.com/api/v1/services/tts/text-to-speech/ws', {
+                rejectUnauthorized: false,
                 headers: { 'Authorization': 'Bearer ' + token }
             });
             const chunks = [];
