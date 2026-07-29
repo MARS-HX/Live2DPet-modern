@@ -74,40 +74,37 @@ class AliyunProvider {
     
     async synthesize(text) {
         if (!this.config.apiKey) throw new Error('No API Key configured');
-        const WebSocket = require('ws');
-        const uuid = require('crypto').randomUUID();
-        const token = this.config.apiKey;
-        const voice = this.config.voice || 'zhiyue';
-        
-        return new Promise((resolve, reject) => {
-            const ws = new (require('ws'))('wss://dashscope.aliyuncs.com/api/v1/services/tts/text-to-speech/ws', {
-                rejectUnauthorized: false,
-                headers: { 'Authorization': 'Bearer ' + token }
-            });
-            const chunks = [];
-            let hasAudio = false;
-            const t = setTimeout(() => { ws.close(); reject(new Error('Timeout')); }, 25000);
-            
-            ws.on('open', () => {
-                ws.send(JSON.stringify({
-                    header: { action: 'run-task', task_id: uuid, streaming: 'out' },
-                    payload: { model: 'sambert-zhiyue-v1', task: { text, voice, format: 'wav', sample_rate: 48000 } }
-                }));
-            });
-            ws.on('message', (data, isBinary) => {
-                if (isBinary) { chunks.push(data); hasAudio = true; }
-                else {
-                    const m = JSON.parse(data.toString());
-                    if (['task-stopped', 'completed'].includes(m.header?.action)) ws.close();
-                }
-            });
-            ws.on('close', (code, reason) => {
-                clearTimeout(t);
-                if (hasAudio) resolve(Buffer.concat(chunks));
-                else reject(new Error('WS close=' + (code || ws._closeCode) + ' reason=' + (reason || '').toString()));
-            });
-            ws.on('error', (err) => { clearTimeout(t); reject(err); });
+        // 使用 HTTP API（Python SDK 底层方式）
+        const res = await axios({
+            method: 'post',
+            url: 'https://dashscope.aliyuncs.com/api/v1/services/tts/text-to-speech/async',
+            headers: { 'Authorization': 'Bearer ' + this.config.apiKey, 'Content-Type': 'application/json' },
+            data: { model: 'sambert-zhiyue-v1', input: { text }, parameters: { voice: this.config.voice || 'zhiyue', format: 'wav' } },
+            timeout: 15000
         });
+        
+        const taskId = res.data?.output?.task_id;
+        if (!taskId) throw new Error('No task_id: ' + JSON.stringify(res.data).slice(0,200));
+        
+        // 轮询结果
+        for (let i = 0; i < 60; i++) {
+            await new Promise(r => setTimeout(r, 1000));
+            const sr = await axios({
+                method: 'get',
+                url: 'https://dashscope.aliyuncs.com/api/v1/tasks/' + taskId,
+                headers: { 'Authorization': 'Bearer ' + this.config.apiKey },
+                timeout: 10000
+            });
+            const st = sr.data?.output?.task_status;
+            if (st === 'SUCCEEDED') {
+                const audioUrl = sr.data?.output?.results?.[0]?.audio_url;
+                if (!audioUrl) throw new Error('No audio_url');
+                const ar = await axios({ method: 'get', url: audioUrl, responseType: 'arraybuffer', timeout: 30000 });
+                return Buffer.from(ar.data);
+            }
+            if (st === 'FAILED') throw new Error('Task failed: ' + JSON.stringify(sr.data?.output).slice(0,200));
+        }
+        throw new Error('Task timeout');
     }
     
     getMetas() {
