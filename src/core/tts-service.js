@@ -78,14 +78,17 @@ class AliyunProvider {
         const tmpFile = path.join(require('os').tmpdir(), 'live2dpet_tts_' + Date.now() + '.wav');
         
         // 生成 Python 脚本
+        const voiceName = this.config.voice || 'zhiyue';
+        // Sambert 模型名规则: sambert-{音色名}-v1
+        const modelName = 'sambert-' + voiceName + '-v1';
         const pyScript = `
 import sys, os, json
 os.environ['DASHSCOPE_API_KEY'] = ${JSON.stringify(this.config.apiKey)}
 from dashscope.audio.tts import SpeechSynthesizer
 result = SpeechSynthesizer.call(
-    model='sambert-zhiyue-v1',
+    model='${modelName}',
     text=${JSON.stringify(text)},
-    voice=${JSON.stringify(this.config.voice || 'zhiyue')},
+    voice=${JSON.stringify(voiceName)},
     sample_rate=48000, format='wav'
 )
 audio = result.get_audio_data()
