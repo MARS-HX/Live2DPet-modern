@@ -1013,7 +1013,7 @@ async function loadTTSStatus() {
     const aliDiv = document.getElementById('aliyun-api-key');
     if (aliDiv) {
         aliDiv.value = aliyun.apiKey || '';
-        document.getElementById('aliyun-voice').value = aliyun.voice || 'zhiyue';
+        document.getElementById('aliyun-voice-prompt').value = aliyun.voicePrompt || '一个活泼可爱的少女声音，语调轻快，甜美自然。';
     }
     // 本地 VITS2 配置
     const localCfg = ttsCfg.local || {};
@@ -1053,7 +1053,7 @@ document.getElementById('btn-save-tts').addEventListener('click', async () => {
     if (aliDiv) {
         ttsConfig.aliyun = {
             apiKey: aliDiv.value.trim(),
-            voice: document.getElementById('aliyun-voice').value || 'zhiyue'
+            voicePrompt: document.getElementById('aliyun-voice-prompt').value.trim()
         };
     }
     // 本地 VITS2 配置

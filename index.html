@@ -428,21 +428,14 @@
                 </select>
             </div>
 
-            <!-- 阿里云配置 (WebSocket + Sambert) -->
+            <!-- 阿里云配置 (Qwen Voice Design) -->
             <div id="tts-config-aliyun" style="display:none;">
-                <p style="font-size:11px;color:#888;margin-bottom:8px;">需要 <a href="https://bailian.console.aliyun.com/" target="_blank" style="color:#e75480;">百炼平台</a> API Key，模型使用 Sambert</p>
+                <p style="font-size:11px;color:#888;margin-bottom:8px;">使用 Qwen Voice Design 模型，API Key 从百炼控制台获取</p>
                 <label>API Key</label>
                 <input type="password" id="aliyun-api-key" placeholder="sk-">
-                <label data-i18n="tts.voice">音色</label>
-                <select id="aliyun-voice">
-                    <option value="zhiyue">知越 (推荐)</option>
-                    <option value="zhimiao">知妙</option>
-                    <option value="zhiling">知灵</option>
-                    <option value="zhixia">知夏</option>
-                    <option value="zhiya">知雅</option>
-                    <option value="zhide">知德</option>
-                </select>
-                <p style="font-size:11px;color:#888;margin-top:-4px;">如选其他音色提示 ModelNotFound，需在百炼控制台部署对应模型</p>
+                <label>音色描述</label>
+                <textarea id="aliyun-voice-prompt" rows="2" placeholder="描述你想要的音色，如：一个活泼可爱的少女声音，语调轻快甜美">一个活泼可爱的少女声音，语调轻快，甜美自然。</textarea>
+                <p style="font-size:11px;color:#888;margin-top:-4px;">每次保存设置会重新创建音色，首次合成可能耗时较长</p>
             </div>
 
             <!-- 本地 VITS2 配置 -->

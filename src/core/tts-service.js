@@ -67,61 +67,76 @@ class MimoProvider {
 }
 
 class AliyunProvider {
-    constructor() { this.config = { apiKey: '', voice: 'zhiyue' }; }
-    init(c) { if (!c) return; if (c.apiKey) this.config.apiKey = c.apiKey; if (c.voice) this.config.voice = c.voice; }
+    constructor() {
+        this.config = { apiKey: '', voice: '', baseURL: 'https://ws-ysh7ppsvq8099553.cn-beijing.maas.aliyuncs.com' };
+    }
+    init(c) {
+        if (!c) return;
+        if (c.apiKey) this.config.apiKey = c.apiKey;
+        if (c.voice) this.config.voice = c.voice;
+        if (c.baseURL) this.config.baseURL = c.baseURL;
+    }
     
     async synthesize(text) {
         if (!this.config.apiKey) throw new Error('No API Key');
-        const { execSync } = require('child_process');
-        const fs = require('fs');
-        const path = require('path');
-        const tmpFile = path.join(require('os').tmpdir(), 'live2dpet_tts_' + Date.now() + '.wav');
+        const base = this.config.baseURL;
         
-        // 生成 Python 脚本
-        const voiceName = this.config.voice || 'zhiyue';
-        // Sambert 模型名规则: sambert-{音色名}-v1
-        const modelName = 'sambert-' + voiceName + '-v1';
-        const pyScript = `
-import sys, os, json
-os.environ['DASHSCOPE_API_KEY'] = ${JSON.stringify(this.config.apiKey)}
-from dashscope.audio.tts import SpeechSynthesizer
-result = SpeechSynthesizer.call(
-    model='${modelName}',
-    text=${JSON.stringify(text)},
-    voice=${JSON.stringify(voiceName)},
-    sample_rate=48000, format='wav'
-)
-audio = result.get_audio_data()
-if audio:
-    with open(${JSON.stringify(tmpFile)}, 'wb') as f:
-        f.write(audio)
-    print('SUCCESS:' + str(len(audio)))
-else:
-    print('ERROR:' + str(result.get_response()))
-`;
-        const tmpPy = path.join(require('os').tmpdir(), 'live2dpet_tts_' + Date.now() + '.py');
-        fs.writeFileSync(tmpPy, pyScript, 'utf-8');
-        
-        try {
-            const out = execSync('python "' + tmpPy + '"', { timeout: 30000, encoding: 'utf-8' });
-            if (out.includes('SUCCESS:')) {
-                const data = fs.readFileSync(tmpFile);
-                try { fs.unlinkSync(tmpFile); } catch(e) {}
-                try { fs.unlinkSync(tmpPy); } catch(e) {}
-                return data;
-            }
-            throw new Error(out || 'Python script failed');
-        } catch(e) {
-            try { fs.unlinkSync(tmpFile); } catch(e2) {}
-            try { fs.unlinkSync(tmpPy); } catch(e2) {}
-            throw new Error('Python TTS: ' + e.message.split('\\n').slice(0,3).join(' '));
+        // 如果没有音色名，先用描述创建音色
+        let voiceName = this.config.voice;
+        if (!voiceName) {
+            voiceName = await this._createVoice(base, text);
         }
+        
+        // 用音色名合成语音
+        const res = await axios({
+            method: 'post',
+            url: base + '/api/v1/services/audio/tts/synthesis',
+            headers: { 'Authorization': 'Bearer ' + this.config.apiKey, 'Content-Type': 'application/json' },
+            data: {
+                model: 'qwen3-tts-vd-realtime-2025-12-16',
+                input: { text, voice: voiceName },
+                parameters: { sample_rate: 24000, response_format: 'wav' }
+            },
+            timeout: 30000
+        });
+        
+        const b64 = res.data?.output?.audio?.data;
+        if (b64) return Buffer.from(b64, 'base64');
+        
+        const b64alt = res.data?.output?.result?.audio_data;
+        if (b64alt) return Buffer.from(b64alt, 'base64');
+        
+        throw new Error('No audio: ' + JSON.stringify(res.data).slice(0,200));
+    }
+    
+    async _createVoice(base, previewText) {
+        const desc = this.config.voicePrompt || '一个活泼可爱的少女声音，语调轻快，甜美自然。';
+        const res = await axios({
+            method: 'post',
+            url: base + '/api/v1/services/audio/tts/customization',
+            headers: { 'Authorization': 'Bearer ' + this.config.apiKey, 'Content-Type': 'application/json' },
+            data: {
+                model: 'qwen-voice-design',
+                input: {
+                    action: 'create',
+                    target_model: 'qwen3-tts-vd-realtime-2025-12-16',
+                    voice_prompt: desc,
+                    preview_text: previewText.slice(0, 50),
+                    language: 'zh'
+                },
+                parameters: { sample_rate: 24000, response_format: 'wav' }
+            },
+            timeout: 60000
+        });
+        const vn = res.data?.output?.voice;
+        if (!vn) throw new Error('Voice creation failed: ' + JSON.stringify(res.data).slice(0,200));
+        this._cachedVoice = vn;
+        return vn;
     }
     
     getMetas() {
         return [{ name: '\\u963f\\u91cc\\u4e91 TTS', styles: [
-            { id:'zhiyue', name:'\\u77e5\\u8d8a' }, { id:'zhimiao', name:'\\u77e5\\u5999' },
-            { id:'zhiling', name:'\\u77e5\\u7075' }, { id:'zhixia', name:'\\u77e5\\u590f' }
+            { id:'', name:'\\u81ea\\u52a8\\u521b\\u5efa\\u97f3\\u8272' },
         ]}];
     }
 }class LocalProvider {

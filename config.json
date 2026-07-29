@@ -251,7 +251,7 @@
     },
     "aliyun": {
       "apiKey": "sk-ws-H.EIEPHPI.Q2Z6.MEUCIB6eJZj7RK9q1WG2HniB7XXwLUR9_szFw4P5jg7jmjR3AiEAiQnDZEPsMr1UCDKJicn7WSFBS_PMywARwjRuHKZvf-A",
-      "voice": "zhiling"
+      "voice": "zhimiao"
     },
     "local": {
       "baseURL": "http://localhost:7860",
