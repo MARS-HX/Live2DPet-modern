@@ -73,11 +73,21 @@ class AliyunProvider {
     async synthesize(text) {
         if (!this.config.apiKey) throw new Error('No API Key');
         const base = this.config.baseURL;
-        const res = await axios({ method:'post', url:base+'/api/v1/services/tts/text-to-speech/async',
+        let res;
+        try {
+            res = await axios({ method:'post', url:base+'/api/v1/services/tts/text-to-speech/async',
             headers: { 'Authorization':'Bearer '+this.config.apiKey, 'Content-Type':'application/json' },
             data: { model:'sambert-zhiyue-v1', input:{text}, parameters:{ voice:this.config.voice||'zhiyue', format:'wav' } },
             timeout:15000
         });
+        } catch(e) {
+            if (e.response?.data) {
+                const d = e.response.data;
+                const msg = Buffer.isBuffer(d) ? d.toString().slice(0,500) : typeof d === 'object' ? JSON.stringify(d).slice(0,500) : String(d).slice(0,500);
+                throw new Error('400: ' + msg);
+            }
+            throw e;
+        }
         const tid = res.data?.output?.task_id;
         if (!tid) {
             // 可能是同步响应（直接返回音频）
