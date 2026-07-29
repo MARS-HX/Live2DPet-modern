@@ -68,12 +68,13 @@ class MimoProvider {
 
 class AliyunProvider {
     constructor() {
-        this.config = { apiKey: '', voice: '', baseURL: 'https://ws-ysh7ppsvq8099553.cn-beijing.maas.aliyuncs.com' };
+        this.config = { apiKey: '', voicePrompt: '一个活泼可爱的少女声音，语调轻快，甜美自然。', baseURL: 'https://ws-ysh7ppsvq8099553.cn-beijing.maas.aliyuncs.com' };
+        this._voiceName = null;
     }
     init(c) {
         if (!c) return;
         if (c.apiKey) this.config.apiKey = c.apiKey;
-        if (c.voice) this.config.voice = c.voice;
+        if (c.voicePrompt) this.config.voicePrompt = c.voicePrompt;
         if (c.baseURL) this.config.baseURL = c.baseURL;
     }
     
@@ -82,26 +83,30 @@ class AliyunProvider {
         const base = this.config.baseURL;
         
         try {
-            // 直接合成（使用配置的音色描述）
             const res = await axios({
                 method: 'post',
-                url: base + '/api/v1/services/audio/tts/synthesis',
+                url: base + '/api/v1/services/audio/tts/customization',
                 headers: { 'Authorization': 'Bearer ' + this.config.apiKey, 'Content-Type': 'application/json' },
                 data: {
-                    model: 'qwen3-tts-vd-realtime-2025-12-16',
-                    input: { 
-                        text, 
-                        voice: this.config.voice || '',
-                        voice_prompt: this.config.voicePrompt || '一个活泼可爱的少女声音'
+                    model: 'qwen-voice-design',
+                    input: {
+                        action: 'create',
+                        target_model: 'qwen3-tts-vd-realtime-2025-12-16',
+                        voice_prompt: this.config.voicePrompt || '一个活泼可爱的少女声音，语调轻快，甜美自然。',
+                        preview_text: text.slice(0, 100),
+                        preferred_name: 'live2dpet_voice_' + Date.now(),
+                        language: 'zh'
                     },
                     parameters: { sample_rate: 24000, response_format: 'wav' }
                 },
-                timeout: 30000
+                timeout: 60000
             });
             
-            const b64 = res.data?.output?.audio?.data || res.data?.output?.result?.audio_data;
-            if (b64) return Buffer.from(b64, 'base64');
-            
+            const b64 = res.data?.output?.preview_audio?.data || res.data?.output?.audio?.data;
+            if (b64) {
+                this._voiceName = res.data?.output?.voice;
+                return Buffer.from(b64, 'base64');
+            }
             throw new Error('No audio: ' + JSON.stringify(res.data).slice(0,300));
         } catch(e) {
             if (e.response?.data) {
@@ -113,34 +118,9 @@ class AliyunProvider {
         }
     }
     
-    async _createVoice(base, previewText) {
-        const desc = this.config.voicePrompt || '一个活泼可爱的少女声音，语调轻快，甜美自然。';
-        const res = await axios({
-            method: 'post',
-            url: base + '/api/v1/services/audio/tts/customization',
-            headers: { 'Authorization': 'Bearer ' + this.config.apiKey, 'Content-Type': 'application/json' },
-            data: {
-                model: 'qwen-voice-design',
-                input: {
-                    action: 'create',
-                    target_model: 'qwen3-tts-vd-realtime-2025-12-16',
-                    voice_prompt: desc,
-                    preview_text: previewText.slice(0, 50),
-                    language: 'zh'
-                },
-                parameters: { sample_rate: 24000, response_format: 'wav' }
-            },
-            timeout: 60000
-        });
-        const vn = res.data?.output?.voice;
-        if (!vn) throw new Error('Voice creation failed: ' + JSON.stringify(res.data).slice(0,200));
-        this._cachedVoice = vn;
-        return vn;
-    }
-    
     getMetas() {
-        return [{ name: '\\u963f\\u91cc\\u4e91 TTS', styles: [
-            { id:'', name:'\\u81ea\\u52a8\\u521b\\u5efa\\u97f3\\u8272' },
+        return [{ name: '\\u963f\\u91cc\\u4e91 TTS (Qwen Voice)', styles: [
+            { id:'custom', name:'\\u81ea\\u5b9a\\u4e49\\u97f3\\u8272' }
         ]}];
     }
 }class LocalProvider {
