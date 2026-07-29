@@ -67,55 +67,52 @@ class MimoProvider {
 }
 
 class AliyunProvider {
-    constructor() { this.config = { apiKey: '', voice: 'zhiyue', baseURL: 'https://ws-ysh7ppsvq8099553.cn-beijing.maas.aliyuncs.com' }; }
-    init(c) { if (!c) return; if (c.apiKey) this.config.apiKey = c.apiKey; if (c.voice) this.config.voice = c.voice; if (c.baseURL) this.config.baseURL = c.baseURL; }
+    constructor() { this.config = { apiKey: '', voice: 'zhiyue' }; }
+    init(c) { if (!c) return; if (c.apiKey) this.config.apiKey = c.apiKey; if (c.voice) this.config.voice = c.voice; }
     
     async synthesize(text) {
         if (!this.config.apiKey) throw new Error('No API Key');
-        const base = this.config.baseURL;
+        const { execSync } = require('child_process');
+        const fs = require('fs');
+        const path = require('path');
+        const tmpFile = path.join(require('os').tmpdir(), 'live2dpet_tts_' + Date.now() + '.wav');
         
-        // 尝试多个 API 路径
-        const endpoints = [
-            { url: base + '/api/v1/services/tts/text-to-speech/async', data: { model:'sambert-zhiyue-v1', input:{text}, parameters:{ voice:this.config.voice||'zhiyue', format:'wav' } } },
-            { url: base + '/compatible-mode/v1/audio/speech', data: { model:'sambert-zhiyue-v1', input: text, voice: this.config.voice||'zhiyue', response_format: 'wav' } },
-            { url: base + '/v1/audio/speech', data: { model:'sambert-zhiyue-v1', input: text, voice: this.config.voice||'zhiyue', response_format: 'wav' } },
-        ];
+        // 生成 Python 脚本
+        const pyScript = `
+import sys, os, json
+os.environ['DASHSCOPE_API_KEY'] = ${JSON.stringify(this.config.apiKey)}
+from dashscope.audio.tts import SpeechSynthesizer
+result = SpeechSynthesizer.call(
+    model='sambert-zhiyue-v1',
+    text=${JSON.stringify(text)},
+    voice=${JSON.stringify(this.config.voice || 'zhiyue')},
+    sample_rate=48000, format='wav'
+)
+audio = result.get_audio_data()
+if audio:
+    with open(${JSON.stringify(tmpFile)}, 'wb') as f:
+        f.write(audio)
+    print('SUCCESS:' + str(len(audio)))
+else:
+    print('ERROR:' + str(result.get_response()))
+`;
+        const tmpPy = path.join(require('os').tmpdir(), 'live2dpet_tts_' + Date.now() + '.py');
+        fs.writeFileSync(tmpPy, pyScript, 'utf-8');
         
-        let lastErr = '';
-        for (const ep of endpoints) {
-            try {
-                const res = await axios({ method:'post', url:ep.url,
-                    headers: { 'Authorization':'Bearer '+this.config.apiKey, 'Content-Type':'application/json' },
-                    data: ep.data, timeout:15000
-                });
-                // 检查是否是直接音频返回
-                if (res.headers['content-type']?.includes('audio')) return Buffer.from(res.data);
-                if (Buffer.isBuffer(res.data) && res.data.length > 100) return res.data;
-                
-                const tid = res.data?.output?.task_id;
-                if (tid) {
-                    for (let i=0;i<60;i++) {
-                        await new Promise(r=>setTimeout(r,1000));
-                        const sr = await axios({ method:'get', url:base+'/api/v1/tasks/'+tid,
-                            headers:{'Authorization':'Bearer '+this.config.apiKey}, timeout:10000 });
-                        const st = sr.data?.output?.task_status;
-                        if (st==='SUCCEEDED') {
-                            const u = sr.data?.output?.results?.[0]?.audio_url;
-                            if (!u) continue;
-                            return Buffer.from((await axios({method:'get',url:u,responseType:'arraybuffer',timeout:30000})).data);
-                        }
-                        if (st==='FAILED') { lastErr = JSON.stringify(sr.data?.output).slice(0,200); break; }
-                    }
-                }
-            } catch(e) {
-                if (e.response) {
-                    const d = e.response.data;
-                    const msg = Buffer.isBuffer(d) ? d.toString().slice(0,200) : typeof d === 'object' ? JSON.stringify(d).slice(0,200) : String(d).slice(0,200);
-                    lastErr = '['+e.response.status+'] ' + msg;
-                } else { lastErr = e.message; }
+        try {
+            const out = execSync('python "' + tmpPy + '"', { timeout: 30000, encoding: 'utf-8' });
+            if (out.includes('SUCCESS:')) {
+                const data = fs.readFileSync(tmpFile);
+                try { fs.unlinkSync(tmpFile); } catch(e) {}
+                try { fs.unlinkSync(tmpPy); } catch(e) {}
+                return data;
             }
+            throw new Error(out || 'Python script failed');
+        } catch(e) {
+            try { fs.unlinkSync(tmpFile); } catch(e2) {}
+            try { fs.unlinkSync(tmpPy); } catch(e2) {}
+            throw new Error('Python TTS: ' + e.message.split('\\n').slice(0,3).join(' '));
         }
-        throw new Error(lastErr || 'All endpoints failed');
     }
     
     getMetas() {
