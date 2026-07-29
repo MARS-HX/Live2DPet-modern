@@ -92,9 +92,16 @@ class AliyunProvider {
         const token = this.config.apiKey;
         
         return new Promise((resolve, reject) => {
-            const ws = new WebSocket(
-                'wss://dashscope.aliyuncs.com/api/v1/text-to-speech/ws?token=' + encodeURIComponent(token)
-            );
+            // 尝试多种 URL + 认证方式
+            const urls = [
+                'wss://dashscope.aliyuncs.com/api/v1/services/tts/text-to-speech/ws?token=' + encodeURIComponent(token),
+                'wss://dashscope.aliyuncs.com/api/v1/services/tts/text-to-speech/ws',
+            ];
+            let ws = null;
+            // 用第一个 URL
+            const urlToUse = urls[0];
+            const wsOptions = urlToUse.includes('?token=') ? {} : { headers: { 'Authorization': 'Bearer ' + token } };
+            ws = new WebSocket(urlToUse, wsOptions);
             
             const chunks = [];
             let hasResult = false;
