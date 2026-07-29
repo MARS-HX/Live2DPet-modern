@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Desktop Pet Settings</title>
+    <style>
+        :root {
+            --bg: #f0f2f5;
+            --card-bg: rgba(255,255,255,0.7);
+            --card-border: rgba(255,255,255,0.3);
+            --card-shadow: 0 8px 32px rgba(0,0,0,0.06);
+            --text: #333;
+            --text-secondary: #666;
+            --input-bg: rgba(255,255,255,0.8);
+            --input-border: rgba(0,0,0,0.08);
+            --accent: #7c4dff;
+            --accent-hover: #651fff;
+            --danger: #ff5252;
+            --tab-bg: rgba(255,255,255,0.5);
+            --tab-active: #7c4dff;
+        }
+        body.dark {
+            --bg: #1a1a2e;
+            --card-bg: rgba(255,255,255,0.08);
+            --card-border: rgba(255,255,255,0.06);
+            --card-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            --text: #e0e0e0;
+            --text-secondary: #999;
+            --input-bg: rgba(255,255,255,0.06);
+            --input-border: rgba(255,255,255,0.08);
+            --accent: #bb86fc;
+            --accent-hover: #a066f0;
+            --danger: #cf6679;
+            --tab-bg: rgba(255,255,255,0.04);
+            --tab-active: #bb86fc;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            padding: 20px;
+            transition: background 0.3s, color 0.3s;
+            min-height: 100vh;
+        }
+        h1 { font-size: 18px; margin-bottom: 16px; }
+        h2 { font-size: 14px; margin: 16px 0 8px; color: var(--text-secondary); }
+        .card {
+            background: var(--card-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 12px;
+            box-shadow: var(--card-shadow);
+            transition: background 0.3s, box-shadow 0.3s, border-color 0.3s;
+        }
+        label { display: block; font-size: 13px; margin-bottom: 4px; color: #555; }
+        body.dark select option { background: #2a2a3e; color: #e0e0e0; }
+        body.dark select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23999' d='M6 8L1 3h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; }
+        input[type="text"], input[type="password"], input[type="number"], select, textarea {
+            width: 100%; padding: 10px 14px;
+            border: 1px solid var(--input-border);
+            border-radius: 10px;
+            font-size: 13px; margin-bottom: 8px;
+            outline: none;
+            background: var(--input-bg);
+            color: var(--text);
+            transition: all 0.3s;
+            font-family: inherit;
+        }
+        input:focus, select:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(124,77,255,0.1); }
+        .btn {
+            padding: 8px 20px; border: none; border-radius: 10px;
+            font-size: 13px; cursor: pointer; transition: all 0.2s;
+            font-family: inherit;
+        }
+        .btn-primary { background: var(--accent); color: white; }
+        .btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); }
+        .btn-secondary { background: rgba(0,0,0,0.06); color: var(--text); }
+        body.dark .btn-secondary { background: rgba(255,255,255,0.08); }
+        .btn-secondary:hover { background: rgba(0,0,0,0.1); }
+        body.dark .btn-secondary:hover { background: rgba(255,255,255,0.12); }
+        .btn-danger { background: var(--danger); color: white; }
+        .btn-danger:hover { opacity: 0.9; }
+        .btn-sm { padding: 4px 12px; font-size: 12px; border-radius: 8px; }
+        .btn-row { display: flex; gap: 8px; margin-top: 12px; }
+        textarea {
+            width: 100%; padding: 8px 12px;
+            border: 1px solid #ddd; border-radius: 8px;
+            font-size: 13px; margin-bottom: 8px;
+            outline: none; transition: border-color 0.2s;
+            font-family: inherit; resize: vertical; min-height: 60px;
+        }
+        textarea:focus { border-color: #7c4dff; }
+        .tabs {
+            display: flex; gap: 4px; margin-bottom: 16px;
+            background: var(--tab-bg);
+            border-radius: 12px;
+            padding: 4px;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+        .tab-btn {
+            flex: 1; padding: 8px 0; border: none;
+            background: transparent; cursor: pointer;
+            font-size: 13px; transition: all 0.3s;
+            color: var(--text-secondary);
+            border-radius: 8px;
+        }
+        .tab-btn:hover { background: rgba(124,77,255,0.08); }
+        .tab-btn.active { background: var(--tab-active); color: white; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .status {
+            font-size: 12px; padding: 6px 12px;
+            border-radius: 8px; margin-top: 8px; display: none;
+        }
+        .status.success { display: block; background: rgba(46,125,50,0.1); color: #2e7d32; backdrop-filter:blur(4px); }
+        .status.error { display: block; background: rgba(198,40,40,0.1); color: #c62828; backdrop-filter:blur(4px); }
+        .status.info { display: block; background: rgba(21,101,192,0.1); color: #1565c0; backdrop-filter:blur(4px); }
+        body.dark .status.success { background: rgba(46,125,50,0.15); color: #81c784; }
+        body.dark .status.error { background: rgba(198,40,40,0.15); color: #ef9a9a; }
+        body.dark .status.info { background: rgba(21,101,192,0.15); color: #90caf9; }
+        .path-ok { color: #2e7d32; font-size: 12px; }
+        .path-err { color: #c62828; font-size: 12px; }
+        .param-row {
+            display: flex; align-items: center; gap: 8px;
+            padding: 4px 0; font-size: 12px;
+        }
+        .param-label { width: 100px; color: #555; }
+        .param-value { flex: 1; color: #333; font-family: monospace; }
+        .param-unmapped { color: #c62828; }
+        .slider-row { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+        .slider-row input[type="range"] { flex: 1; }
+        .slider-val { width: 40px; text-align: center; font-size: 12px; }
+        .expr-item {
+            display: flex; align-items: center; gap: 8px;
+            padding: 6px 0; border-bottom: 1px solid #f0f0f0;
+            font-size: 12px;
+        }
+        .expr-item:last-child { border-bottom: none; }
+        .expr-name { width: 80px; font-weight: 500; }
+        .expr-dur { width: 60px; }
+        .icon-preview { width: 32px; height: 32px; object-fit: contain; border-radius: 4px; }
+        .model-info { font-size: 12px; color: #888; margin: 4px 0; }
+        .image-item {
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 0; border-bottom: 1px solid #f0f0f0;
+            font-size: 12px; flex-wrap: wrap;
+        }
+        .image-item:last-child { border-bottom: none; }
+        .image-thumb {
+            width: 50px; height: 50px;
+            object-fit: cover; border-radius: 4px;
+            flex-shrink: 0;
+        }
+        .image-item .cats { display: flex; gap: 8px; align-items: center; }
+        .image-item .emotion-name {
+            width: 70px; padding: 2px 4px; font-size: 12px;
+            border: 1px solid #ddd; border-radius: 4px;
+        }
+        .lang-switcher {
+            display: flex; align-items: center; gap: 8px;
+            margin-bottom: 12px; font-size: 13px;
+        }
+        .lang-switcher select {
+            width: auto; margin-bottom: 0; padding: 4px 8px;
+        }
+        .tts-section {
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid #eee;
+        }
+        .recording-btn {
+            background: #ff5252;
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.6; }
+            100% { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div class="lang-switcher">
+        <label data-i18n="lang.label">Language</label>
+        <select id="lang-select">
+            <option value="en">English</option>
+            <option value="zh">中文</option>
+            <option value="ja">日本語</option>
+        </select>
+    </div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <h1 style="margin-bottom:0;">Desktop Pet</h1>
+        <button id="theme-toggle" style="background:var(--card-bg);border:1px solid var(--card-border);border-radius:10px;padding:6px 14px;cursor:pointer;font-size:16px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);transition:all 0.3s;color:var(--text);" title="切换主题">🌓</button>
+    </div>
+
+    <div class="tabs">
+        <button class="tab-btn active" data-tab="settings" data-i18n="tab.settings">Settings</button>
+        <button class="tab-btn" data-tab="model" data-i18n="tab.model">Model</button>
+        <button class="tab-btn" data-tab="emotion" data-i18n="tab.emotion">Emotion</button>
+        <button class="tab-btn" data-tab="tts" data-i18n="tab.tts">TTS & Voice</button>
+        <button class="tab-btn" data-tab="prompt" data-i18n="tab.prompt">Prompt</button>
+        <button class="tab-btn" data-tab="tavern" data-i18n="tab.tavern">Tavern</button>
+    </div>
+
+    <!-- Settings Tab -->
+    <div id="tab-settings" class="tab-content active">
+    <div class="card">
+        <h2 data-i18n="api.title">API Configuration</h2>
+        <p style="font-size:12px;color:#888;margin-bottom:8px;" data-i18n="api.hint">Tip: Register at openrouter.ai and go to openrouter.ai/keys to create an API Key. Supports many models including Grok, Gemini, etc.</p>
+        <label data-i18n="api.baseUrl">API Base URL</label>
+        <input type="text" id="api-url" placeholder="https://openrouter.ai/api/v1">
+        <label data-i18n="api.key">API Key</label>
+        <input type="password" id="api-key" placeholder="sk-...">
+        <label data-i18n="api.model">Model Name</label>
+        <input type="text" id="model-name" placeholder="x-ai/grok-4.1-fast">
+        <div class="btn-row">
+            <button class="btn btn-primary" id="btn-save-api" data-i18n="btn.save">Save</button>
+            <button class="btn btn-secondary" id="btn-test-api" data-i18n="btn.test">Test</button>
+        </div>
+        <div class="status" id="api-status"></div>
+    </div>
+    <div class="card">
+        <h2 data-i18n="enhance.tokens.title">Response Length</h2>
+        <label data-i18n="enhance.tokens.label">Max tokens multiplier</label>
+        <div style="display:flex;gap:6px;margin-bottom:8px;">
+            <button class="btn btn-secondary btn-sm token-mult-btn" data-mult="0.5">×0.5</button>
+            <button class="btn btn-primary btn-sm token-mult-btn" data-mult="1">×1</button>
+            <button class="btn btn-secondary btn-sm token-mult-btn" data-mult="1.5">×1.5</button>
+            <button class="btn btn-secondary btn-sm token-mult-btn" data-mult="2">×2</button>
+        </div>
+        <p id="token-info" style="font-size:12px;color:#888;"></p>
+    </div>
+    <div class="card">
+        <h2 data-i18n="detect.title">Detection Settings</h2>
+        <label data-i18n="detect.interval">AI Detection Interval (sec)</label>
+        <input type="number" id="interval" value="30" min="10" max="300">
+        <label data-i18n="detect.chatGap">Chat Gap (sec)</label>
+        <input type="number" id="chat-gap" value="5" min="0" max="60">
+        <label data-i18n="detect.screenshotInterval">Screenshot Interval (sec)</label>
+        <input type="number" id="screenshot-interval" value="60" min="0" max="600" style="margin-bottom:4px;">
+        <button class="btn btn-primary" id="btn-save-interval" data-i18n="btn.save">保存</button>
+    </div>
+    <div class="card">
+        <h2 data-i18n="audio.title">音频设备</h2>
+        <label data-i18n="audio.input">麦克风</label>
+        <select id="audio-input-device" style="margin-bottom:6px;"></select>
+        <label data-i18n="audio.output">扬声器</label>
+        <select id="audio-output-device" style="margin-bottom:6px;"></select>
+        <label data-i18n="audio.volume">音量</label>
+        <div style="display:flex;align-items:center;gap:8px;">
+            <input type="range" id="audio-volume" min="0" max="100" value="80" style="flex:1;">
+            <span id="audio-volume-label" style="font-size:12px;min-width:30px;">80%</span>
+        </div>
+        <button class="btn btn-primary" id="btn-save-audio" data-i18n="btn.save">保存</button>
+        <div class="status" id="audio-status"></div>
+    </div>
+    <div class="card">
+        <label style="display:inline-flex;align-items:center;gap:6px;">
+            <input type="checkbox" id="enhance-enabled">
+            <span data-i18n="enhance.master">Enable Enhancement</span>
+        </label>
+        <p style="font-size:11px;color:#888;margin-top:4px;" data-i18n="enhance.masterHint">Enables keyframe visual memory — AI sees representative screenshots from recent activity (uses extra API tokens)</p>
+    </div>
+    <div class="card">
+        <div class="btn-row">
+            <button class="btn btn-primary" id="btn-start" style="flex:1" data-i18n="btn.start">Start Pet</button>
+            <button class="btn btn-danger" id="btn-stop" style="flex:1" data-i18n="btn.stop">Stop Pet</button>
+        </div>
+    </div>
+    <div class="card" style="text-align:center;font-size:12px;color:#888;padding:8px">
+        <span data-i18n="footer.text">Open source & free. Get the latest version on</span> <a href="#" id="link-github" style="color:#58a6ff" data-i18n="footer.star">GitHub</a>
+    </div>
+    </div>
+
+    <!-- Model Tab -->
+    <div id="tab-model" class="tab-content">
+    <div class="card">
+        <h2 data-i18n="model.mode">Model Mode</h2>
+        <select id="model-type">
+            <option value="none" data-i18n="model.none">No Model (Guide)</option>
+            <option value="live2d" data-i18n="model.live2d">Live2D</option>
+            <option value="image" data-i18n="model.image">Image Folder</option>
+        </select>
+        <div class="status" id="model-status"></div>
+    </div>
+    <div class="card" id="card-live2d" style="display:none">
+        <h2 data-i18n="model.l2d.title">Live2D Model</h2>
+        <div class="btn-row">
+            <button class="btn btn-primary" id="btn-import-l2d" data-i18n="model.l2d.select">Select Model Folder</button>
+        </div>
+        <div id="l2d-info" class="model-info"></div>
+        <label style="display:inline-flex;align-items:center;gap:4px;margin-top:8px;">
+            <input type="checkbox" id="copy-to-userdata" checked> <span data-i18n="model.l2d.copy">Copy to app data directory</span>
+        </label>
+        <div id="l2d-path-status"></div>
+    </div>
+    <div class="card" id="card-param-mapping" style="display:none">
+        <h2 data-i18n="model.param.title">Parameter Mapping</h2>
+        <div id="param-mapping-list"></div>
+        <div class="btn-row">
+            <button class="btn btn-secondary btn-sm" id="btn-apply-suggested" data-i18n="model.param.apply">Apply Suggested Mapping</button>
+        </div>
+    </div>
+    <div class="card" id="card-canvas-y" style="display:none">
+        <h2 data-i18n="model.canvas.title">Canvas Y Anchor</h2>
+        <div class="slider-row">
+            <input type="range" id="canvas-y-slider" min="0.3" max="0.9" step="0.01" value="0.60">
+            <span class="slider-val" id="canvas-y-val">0.60</span>
+        </div>
+    </div>
+    <div class="card" id="card-image" style="display:none">
+        <h2 data-i18n="model.img.title">Image Folder</h2>
+        <div class="btn-row">
+            <button class="btn btn-primary" id="btn-select-image-folder" data-i18n="model.img.select">Select Image Folder</button>
+        </div>
+        <div id="folder-info" class="model-info"></div>
+        <div id="image-list-container" style="display:none; margin-top:12px;">
+            <div style="margin-bottom:8px;">
+                <label data-i18n="model.img.crop">Crop Scale (1.0=original, higher crops more bottom)</label>
+                <div class="slider-row">
+                    <input type="range" id="image-crop-slider" min="0.8" max="2.0" step="0.05" value="1.0">
+                    <span class="slider-val" id="image-crop-val">1.00</span>
+                </div>
+            </div>
+            <div id="image-list" style="max-height:400px; overflow-y:auto;"></div>
+        </div>
+    </div>
+    <div class="card">
+        <h2 data-i18n="model.bubble.title">Bubble Frame</h2>
+        <div class="btn-row">
+            <button class="btn btn-secondary" id="btn-select-bubble" data-i18n="model.bubble.select">Select Bubble Image</button>
+            <button class="btn btn-secondary" id="btn-clear-bubble" data-i18n="model.bubble.clear">Clear</button>
+        </div>
+        <div id="bubble-info" class="model-info"></div>
+    </div>
+    <div class="card">
+        <h2 data-i18n="model.icon.title">App Icon</h2>
+        <div style="display:flex;align-items:center;gap:8px;">
+            <img id="icon-preview" class="icon-preview" src="" style="display:none">
+            <button class="btn btn-secondary" id="btn-select-icon" data-i18n="model.icon.select">Select Icon</button>
+        </div>
+        <div id="icon-info" class="model-info"></div>
+    </div>
+    <div class="card">
+        <div class="btn-row">
+            <button class="btn btn-primary" id="btn-save-model" data-i18n="model.save">Save Model Settings</button>
+            <button class="btn btn-danger" id="btn-clear-model" data-i18n="model.clear">Clear Model</button>
+        </div>
+    </div>
+    </div>
+
+    <!-- Emotion Tab -->
+    <div id="tab-emotion" class="tab-content">
+    <div class="card">
+        <h2 data-i18n="emo.freq.title">Expression Frequency</h2>
+        <label data-i18n="emo.freq.label">Expected frequency (sec, min 30)</label>
+        <input type="number" id="emotion-frequency" value="60" min="30" max="600">
+        <button class="btn btn-primary" id="btn-save-emotion-freq" data-i18n="btn.save">Save</button>
+        <div style="margin-top:8px;">
+            <label><input type="checkbox" id="allow-simultaneous"> <span data-i18n="emo.simultaneous">Allow simultaneous expression & motion</span></label>
+        </div>
+        <div class="status" id="emotion-status"></div>
+    </div>
+    <div class="card">
+        <h2 data-i18n="emo.expr.title">Expression List</h2>
+        <p class="model-info" id="expr-hint" data-i18n="emo.expr.hint">Expressions auto-load after model import.</p>
+        <div id="expression-list"></div>
+        <div class="btn-row">
+            <button class="btn btn-secondary btn-sm" id="btn-add-expr" data-i18n="emo.expr.add">Add Expression</button>
+        </div>
+        <div class="status" id="expr-status"></div>
+    </div>
+    <div class="card">
+        <h2 data-i18n="emo.motion.title">Motion List</h2>
+        <p class="model-info" id="motion-hint" data-i18n="emo.motion.hint">Motions auto-load after model import.</p>
+        <div id="motion-list"></div>
+        <div class="btn-row">
+            <button class="btn btn-secondary btn-sm" id="btn-add-motion" data-i18n="emo.motion.add">Add Motion</button>
+        </div>
+        <div class="status" id="motion-status"></div>
+    </div>
+    <div class="card">
+        <label data-i18n="emo.defExprDur">Default expression duration (sec)</label>
+        <input type="number" id="default-expr-duration" value="5" min="1" max="30" step="0.5">
+        <label data-i18n="emo.defMotionDur">Default motion duration (sec)</label>
+        <input type="number" id="default-motion-duration" value="3" min="1" max="30" step="0.5">
+        <button class="btn btn-primary" id="btn-save-expressions" data-i18n="emo.save">Save Expression Settings</button>
+        <div class="status" id="save-emotion-status"></div>
+    </div>
+    </div>
+
+    <!-- TTS & Voice Tab (使用云端 STT Mimo API) -->
+    <div id="tab-tts" class="tab-content">
+        <!-- TTS 配置（多后端支持） -->
+        <div class="card">
+            <h2 data-i18n="tts.title">TTS Configuration</h2>
+            <div class="status" id="tts-status"></div>
+            <p class="model-info" id="tts-hint" data-i18n="tts.hint">Select a TTS provider and fill in the configuration.</p>
+            <div style="display:flex; gap:8px; align-items:center; margin:8px 0;">
+                <button class="btn btn-secondary" id="btn-restart-tts" style="display:none;" data-i18n="tts.restart">Restart TTS</button>
+            </div>
+            
+            <label data-i18n="tts.provider">TTS Provider</label>
+            <select id="tts-provider" style="margin-bottom:8px;">
+                <option value="mimo" data-i18n="tts.provider.mimo">Mimo</option>
+                <option value="aliyun" data-i18n="tts.provider.aliyun">Aliyun TTS</option>
+            <option value="local" data-i18n="tts.provider.local">Local VITS2</option>
+            </select>
+
+            <!-- Mimo 配置 -->
+            <div id="tts-config-mimo">
+                <label data-i18n="tts.apiUrl">API Base URL</label>
+                <input type="text" id="mimo-base-url" placeholder="https://api.xiaomimimo.com/v1">
+                <label>API Key：</label>
+                <input type="password" id="mimo-api-key">
+                <label data-i18n="tts.stylePrompt">Style Prompt (optional)</label>
+                <textarea id="mimo-style-prompt" rows="3" placeholder="自然、流畅、清晰的中文语音"></textarea>
+                <label data-i18n="tts.format">Audio Format</label>
+                <select id="mimo-format">
+                    <option value="wav">WAV</option>
+                    <option value="mp3">MP3</option>
+                </select>
+            </div>
+
+            <!-- 阿里云配置 (WebSocket + Sambert) -->
+            <div id="tts-config-aliyun" style="display:none;">
+                <p style="font-size:11px;color:#888;margin-bottom:8px;">需要 <a href="https://bailian.console.aliyun.com/" target="_blank" style="color:#e75480;">百炼平台</a> API Key，模型使用 Sambert</p>
+                <label>API Key</label>
+                <input type="password" id="aliyun-api-key" placeholder="sk-">
+                <label data-i18n="tts.voice">音色</label>
+                <select id="aliyun-voice">
+                    <option value="zhiyue">知越</option>
+                    <option value="zhimiao">知妙</option>
+                    <option value="zhiling">知灵</option>
+                    <option value="zhixia">知夏</option>
+                </select>
+            </div>
+
+            <!-- 本地 VITS2 配置 -->
+            <div id="tts-config-local" style="display:none;">
+                <label data-i18n="tts.serviceUrl">Service URL</label>
+                <input type="text" id="local-base-url" value="http://localhost:7860" placeholder="http://localhost:7860">
+                <label data-i18n="tts.endpoint">TTS Endpoint</label>
+                <input type="text" id="local-tts-endpoint" value="/run/tts" placeholder="/run/tts">
+                <label data-i18n="tts.method">Request Method</label>
+                <select id="local-method">
+                    <option value="get">GET</option>
+                    <option value="post">POST</option>
+                </select>
+                <label data-i18n="tts.textParam">Text Parameter</label>
+                <input type="text" id="local-text-param" value="text" placeholder="text">
+                <label data-i18n="tts.speaker">Speaker ID</label>
+                <input type="text" id="local-speaker" value="0" placeholder="0">
+                <label data-i18n="tts.language">Language</label>
+                <input type="text" id="local-language" value="zh" placeholder="zh">
+                <label data-i18n="tts.responseType">Response Type</label>
+                <select id="local-response-type">
+                    <option value="json" data-i18n="tts.responseType.json">JSON (base64)</option>
+                    <option value="blob" data-i18n="tts.responseType.blob">Raw Audio</option>
+                </select>
+                <label data-i18n="tts.audioPath">Audio Field Path</label>
+                <input type="text" id="local-audio-path" value="audio" placeholder="如 data.audio">
+            </div>
+
+            <button class="btn btn-primary" id="btn-save-tts" data-i18n="tts.save">保存设置</button>
+            <div class="status" id="tts-save-status"></div>
+        </div>
+
+        <!-- 语音输入控制（开关式连续识别）使用云端 STT（Mimo API） -->
+        <div class="card">
+            <h2 data-i18n="stt.title">Voice Chat (Cloud STT)</h2>
+            <div class="btn-row">
+                <button class="btn btn-primary" id="btn-voice-toggle" style="flex:1;">🎤 开始语音对话</button>
+            </div>
+            <div class="status" id="voice-status"></div>
+            <div class="model-info" id="asr-hint">使用云端语音识别（Mimo API），需在 config.json 中配置有效的 stt.baseURL 和 apiKey。点击“开始语音对话”后，将持续监听你的语音，识别后自动回复。再次点击关闭。</div>
+        </div>
+
+        <!-- 音频模式选择 -->
+        <div class="card">
+            <h2 data-i18n="tts.audioMode">Audio Mode</h2>
+            <div style="display:flex;gap:16px;margin:8px 0;">
+                <label><input type="radio" name="audio-mode" value="tts" checked> <span data-i18n="tts.mode.tts">TTS Voice Synthesis</span></label>
+                <label><input type="radio" name="audio-mode" value="silent"> <span data-i18n="tts.mode.silent">Silent</span></label>
+            </div>
+            <p class="model-info" id="audio-mode-hint" data-i18n="tts.modeHint">Auto fallback: TTS → Silent when unavailable.</p>
+        </div>
+
+        <!-- TTS 测试 -->
+        <div class="card">
+            <h2 data-i18n="tts.test.title">TTS Test</h2>
+            <input type="text" id="tts-test-text" data-i18n-ph="tts.test.placeholder" value="你好，我是你的桌面宠物">
+            <button class="btn btn-secondary" id="btn-test-tts" data-i18n="tts.test.btn">Test TTS</button>
+            <button class="btn btn-secondary" id="btn-diagnose-tts" style="margin-left:4px;font-size:11px;" data-i18n="tts.diagnose">Diagnose TTS</button>
+            <div class="status" id="tts-test-status"></div>
+            <div class="status" id="tts-diagnose-status"></div>
+        </div>
+    </div>
+
+    <!-- Prompt Tab -->
+    <div id="tab-prompt" class="tab-content">
+    <div class="card">
+        <h2 data-i18n="prompt.card">Character Card</h2>
+        <div style="display:flex; gap:8px; align-items:center; margin-bottom:4px;">
+            <select id="character-select" style="flex:1;"></select>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
+            <button class="btn btn-secondary" id="btn-new-character" title="New">+</button>
+            <button class="btn btn-secondary" id="btn-import-character" title="Import">↓</button>
+            <button class="btn btn-secondary" id="btn-rename-character" title="Rename">✎</button>
+            <button class="btn btn-secondary" id="btn-delete-character" title="Delete">✕</button>
+            <button class="btn btn-secondary" id="btn-reset-builtin" title="Reset Built-in Cards">⟲</button>
+        </div>
+        <div id="character-name-input-row" style="display:none; gap:8px; align-items:center;">
+            <input type="text" id="character-name-input" data-i18n-ph="prompt.newName.ph" style="flex:1;">
+            <button class="btn btn-primary" id="btn-confirm-name" data-i18n="prompt.confirm">OK</button>
+            <button class="btn btn-secondary" id="btn-cancel-name" data-i18n="prompt.cancel">Cancel</button>
+        </div>
+    </div>
+    <div class="card">
+        <h2 data-i18n="prompt.name">Character Name</h2>
+        <input type="text" id="prompt-name" data-i18n-ph="prompt.name.ph">
+    </div>
+    <div class="card">
+        <h2 data-i18n="prompt.identity">Character Identity</h2>
+        <label data-i18n="prompt.identity.desc">Character's relationship to user (e.g., sister, friend, assistant)</label>
+        <input type="text" id="prompt-user-identity" data-i18n-ph="prompt.identity.ph" placeholder="sister">
+    </div>
+    <div class="card">
+        <h2 data-i18n="prompt.term">Address Term</h2>
+        <label data-i18n="prompt.term.desc">How character addresses user (e.g., you, bro, master)</label>
+        <input type="text" id="prompt-user-term" data-i18n-ph="prompt.term.ph" placeholder="you">
+    </div>
+    <div class="card">
+        <h2 data-i18n="prompt.desc">Description</h2>
+        <textarea id="prompt-desc" rows="4" data-i18n-ph="prompt.desc.ph"></textarea>
+    </div>
+    <div class="card">
+        <h2 data-i18n="prompt.personality">Personality</h2>
+        <textarea id="prompt-personality" rows="4" data-i18n-ph="prompt.personality.ph"></textarea>
+    </div>
+    <div class="card">
+        <h2 data-i18n="prompt.scenario">Scenario</h2>
+        <textarea id="prompt-scenario" rows="6" data-i18n-ph="prompt.scenario.ph"></textarea>
+    </div>
+    <div class="card">
+        <h2 data-i18n="prompt.rules">Hard Rules</h2>
+        <textarea id="prompt-rules" rows="4" data-i18n-ph="prompt.rules.ph"></textarea>
+    </div>
+    <div class="card">
+        <h2 data-i18n="prompt.language">Response Language</h2>
+        <input type="text" id="prompt-language" data-i18n-ph="prompt.language.ph">
+    </div>
+    <div class="card">
+        <h2 data-i18n="prompt.hitActions">Interaction Descriptions</h2>
+        <label data-i18n="prompt.hitActions.desc">Custom descriptions for each interaction type. Empty = default.</label>
+        <div style="margin-top:8px;">
+            <label>Click</label>
+            <input type="text" id="prompt-hit-click" data-i18n-ph="prompt.hit.click.ph" placeholder="clicked you">
+            <label>Touch (long press)</label>
+            <input type="text" id="prompt-hit-touch" data-i18n-ph="prompt.hit.touch.ph" placeholder="touched you">
+            <label>Drag</label>
+            <input type="text" id="prompt-hit-drag" data-i18n-ph="prompt.hit.drag.ph" placeholder="dragged you">
+            <label>Swipe</label>
+            <input type="text" id="prompt-hit-swipe" data-i18n-ph="prompt.hit.swipe.ph" placeholder="swiped past you">
+            <label>Resize</label>
+            <input type="text" id="prompt-hit-resize" data-i18n-ph="prompt.hit.resize.ph" placeholder="resized you">
+        </div>
+    </div>
+    <div class="card">
+        <div class="btn-row">
+            <button class="btn btn-primary" id="btn-save-prompt" data-i18n="prompt.save">Save</button>
+        </div>
+        <div class="status" id="prompt-status"></div>
+    </div>
+    </div>
+
+    <script src="src/i18n/locales.js"></script>
+    <script src="src/core/ai-chat.js"></script>
+    <!-- 酒馆预设配置 -->
+    <div id="tab-tavern" class="tab-content">
+        <div class="card">
+            <h2 data-i18n="tavern.title">Tavern Mode Presets</h2>
+            <p style="font-size:12px;color:#888;margin-bottom:8px;" data-i18n="tavern.desc">Manage world settings, characters and dialogue for Tavern mode.</p>
+            <div style="display:flex;gap:6px;margin-bottom:12px;">
+                <button class="btn btn-primary" id="btn-preset-new" data-i18n="tavern.new">New Preset</button>
+                <button class="btn btn-secondary" id="btn-preset-import" data-i18n="tavern.import">Import JSON</button>
+            </div>
+            <div id="preset-list" style="margin-bottom:12px;">
+                <label data-i18n="tavern.saved">Saved Presets</label>
+                <select id="preset-selector" style="width:100%;margin-bottom:6px;">
+                    <option value="" data-i18n="tavern.select">-- Select Preset --</option>
+                </select>
+                <div style="display:flex;gap:6px;">
+                    <button class="btn btn-secondary btn-sm" id="btn-preset-apply" data-i18n="tavern.apply">Apply</button>
+                    <button class="btn btn-secondary btn-sm" id="btn-preset-edit" data-i18n="tavern.edit">Edit</button>
+                    <button class="btn btn-secondary btn-sm" id="btn-preset-export" data-i18n="tavern.export">Export</button>
+                    <button class="btn btn-danger btn-sm" id="btn-preset-delete" data-i18n="tavern.delete">Delete</button>
+                </div>
+            </div>
+            <div id="preset-editor" style="display:none;border-top:1px solid var(--card-border);padding-top:12px;margin-top:8px;">
+                <h3 style="font-size:14px;color:#e75480;margin-bottom:8px;" data-i18n="tavern.editor">Edit Preset</h3>
+                <label data-i18n="tavern.name">Name</label><input type="text" id="pe-name" style="width:100%;margin-bottom:6px;">
+                <label data-i18n="tavern.descLabel">Description</label><input type="text" id="pe-desc" style="width:100%;margin-bottom:6px;">
+                <label data-i18n="tavern.userRole">Your Role</label><input type="text" id="pe-user-role" value="Adventurer" style="width:100%;margin-bottom:6px;">
+                <label data-i18n="tavern.aiRole">AI Role</label><input type="text" id="pe-ai-role" value="Innkeeper" style="width:100%;margin-bottom:6px;">
+                <label data-i18n="tavern.greeting">Greeting</label><input type="text" id="pe-greeting" style="width:100%;margin-bottom:6px;">
+                <label data-i18n="tavern.systemPrompt">AI Persona</label><textarea id="pe-system-prompt" rows="3" style="width:100%;margin-bottom:6px;"></textarea>
+                <label data-i18n="tavern.world">World Building</label><textarea id="pe-world" rows="3" style="width:100%;margin-bottom:6px;"></textarea>
+                <label data-i18n="tavern.diaryPrompt">Diary Prompt</label><textarea id="pe-diary-prompt" rows="2" style="width:100%;margin-bottom:6px;"></textarea>
+                <div style="display:flex;gap:6px;margin-top:8px;">
+                    <button class="btn btn-primary" id="btn-preset-save" data-i18n="tavern.save">Save</button>
+                    <button class="btn btn-secondary" id="btn-preset-cancel" data-i18n="tavern.cancel">Cancel</button>
+                </div>
+                <div class="status" id="preset-status"></div>
+            </div>
+        </div>
+        <div class="card">
+            <h2 data-i18n="tavern.modelTitle">Tavern AI Model</h2>
+            <p style="font-size:12px;color:#888;margin-bottom:8px;" data-i18n="tavern.modelHint">Leave empty to use the main AI model. Configure a separate model for tavern mode.</p>
+            <label data-i18n="tavern.modelUrl">API Base URL</label>
+            <input type="text" id="tavern-model-url" placeholder="https://openrouter.ai/api/v1">
+            <label data-i18n="tavern.modelKey">API Key</label>
+            <input type="password" id="tavern-model-key">
+            <label data-i18n="tavern.modelName">Model Name</label>
+            <input type="text" id="tavern-model-name" placeholder="gpt-4o-mini">
+            <button class="btn btn-primary" id="btn-save-tavern-model" data-i18n="btn.save">Save</button>
+            <div class="status" id="tavern-model-status"></div>
+        </div>
+    </div>
+    <script src="src/core/prompt-builder.js"></script>
+    <script src="src/core/emotion-system.js"></script>
+    <script src="src/core/audio-state-machine.js"></script>
+    <script src="src/core/message-session.js"></script>
+    <script src="src/core/enhance/context-pool.js"></script>
+    <script src="src/core/enhance/enhance-utils.js"></script>
+    <script src="src/core/enhance/memory-tracker.js"></script>
+    <script src="src/core/enhance/search-service.js"></script>
+    <script src="src/core/enhance/knowledge-store.js"></script>
+    <script src="src/core/enhance/vlm-extractor.js"></script>
+    <script src="src/core/enhance/knowledge-acquisition.js"></script>
+    <script src="src/core/enhance/enhancement-orchestrator.js"></script>
+    <script src="src/core/desktop-pet-system.js"></script>
+    <script src="src/renderer/settings-ui.js"></script>
+</body>
+</html>

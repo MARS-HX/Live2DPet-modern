@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chat Window</title>
+<style>
+:root {
+    --chat-bg: rgba(255,255,255,0.95);
+    --chat-text: #333;
+    --chat-input-bg: rgba(255,255,255,0.8);
+    --chat-input-border: #ddd;
+    --chat-msg-user: #333;
+    --chat-msg-ai: #e75480;
+    --chat-bar-bg: #f8f8f8;
+    --chat-bar-border: #eee;
+    --chat-time: #bbb;
+    --chat-shadow: 0 4px 20px rgba(0,0,0,0.15);
+}
+body.dark select option { background:#2a2a3e; color:#e0e0e0; }
+body.dark {
+    --chat-bg: rgba(30,30,50,0.95);
+    --chat-text: #e0e0e0;
+    --chat-input-bg: rgba(255,255,255,0.06);
+    --chat-input-border: rgba(255,255,255,0.12);
+    --chat-msg-user: #e0e0e0;
+    --chat-msg-ai: #f48fb1;
+    --chat-bar-bg: rgba(40,40,60,0.95);
+    --chat-bar-border: rgba(255,255,255,0.06);
+    --chat-time: #666;
+    --chat-shadow: 0 4px 20px rgba(0,0,0,0.4);
+}
+* { margin:0; padding:0; box-sizing:border-box; user-select:none; }
+html, body { width:100%; height:100%; background:transparent; overflow:hidden; font-family:'Microsoft YaHei',sans-serif; }
+#chat-container {
+    width:100%; height:100%;
+    display:flex; flex-direction:column;
+    background:var(--chat-bg);
+    border-radius:12px;
+    border:1px solid var(--chat-bar-border);
+    box-shadow:var(--chat-shadow);
+    overflow:hidden;
+    transition:background 0.3s,box-shadow 0.3s;
+}
+#drag-bar {
+    padding:4px 8px;
+    background:var(--chat-bar-bg);
+    border-bottom:1px solid var(--chat-bar-border);
+    color:var(--chat-text);
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    font-size:12px;
+    color:#666;
+    cursor:move;
+    -webkit-app-region:drag;
+    min-height:28px;
+}
+#drag-bar .title { display:flex; align-items:center; gap:4px; flex-shrink:0; }
+#drag-bar .controls { display:flex; gap:2px; align-items:center; -webkit-app-region:no-drag; }
+.mode-badge {
+    font-size:9px; padding:1px 6px; border-radius:6px; cursor:pointer; -webkit-app-region:no-drag;
+    white-space:nowrap;
+}
+.mode-companion .mode-badge { background:#e8f5e9; color:#2e7d32; }
+.mode-tavern .mode-badge { background:#fff3e0; color:#e65100; }
+.ctrl-btn {
+    border:none; background:none; cursor:pointer; font-size:13px; padding:0 4px; color:#999;
+}
+.ctrl-btn:hover { color:#e75480; }
+#chat-messages {
+    flex:1; overflow-y:auto; padding:8px; font-size:13px; line-height:1.6;
+    background:var(--chat-bg);
+}
+.msg { margin:4px 0; word-break:break-word; }
+.msg.user { color:var(--chat-msg-user); text-align:right; }
+.msg.ai { color:var(--chat-msg-ai); text-align:left; }
+.msg-time { font-size:9px; color:var(--chat-time); display:block; }
+body.dark .msg.ai { color:#f48fb1; }
+.msg.user .msg-time { text-align:right; }
+.msg.ai .msg-time { text-align:left; }
+#typing-indicator { display:none; font-size:11px; color:#e75480; padding:2px 8px; }
+#typing-indicator.show { display:block; }
+#input-row {
+    display:flex; gap:4px; padding:6px 8px;
+    background:var(--chat-bg);
+    border-top:1px solid var(--chat-bar-border);
+}
+#chat-input {
+    flex:1; border:1px solid var(--chat-input-border); border-radius:16px; padding:6px 12px;
+    font-size:13px; outline:none;
+    background:var(--chat-input-bg);
+    color:var(--chat-text);
+    transition:border-color 0.2s,background 0.3s;
+}
+#chat-input:focus { border-color:#e75480; }
+body.dark #chat-input::placeholder { color:#888; }
+.chat-btn {
+    border:none; border-radius:50%; width:30px; height:30px;
+    cursor:pointer; font-size:14px; display:flex; align-items:center; justify-content:center;
+    transition:background 0.2s;
+}
+#btn-send { background:#e75480; color:white; }
+#btn-mic { background:rgba(255,255,255,0.8); color:#555; border:1px solid #ddd; }
+#btn-mic:hover { background:rgba(255,255,255,1); }
+#btn-mic.listening { background:#ff4444; color:white; animation:pulse 1s infinite; }
+@keyframes pulse { 0%{transform:scale(1)} 50%{transform:scale(1.1)} 100%{transform:scale(1)} }
+</style>
+</head>
+<body>
+<div id="chat-container">
+    <div id="drag-bar">
+        <span class="title">
+            <span id="mode-icon">🐱</span>
+            <span id="mode-label">陪伴</span>
+            <span class="mode-badge" id="mode-toggle" title="切换模式">切换</span>
+        </span>
+        <span class="controls">
+            <select id="preset-select" style="display:none;font-size:10px;padding:1px 4px;border:1px solid #ddd;border-radius:4px;max-width:80px;">
+                <option value="">预设</option>
+            </select>
+            <span id="tts-toggle-tavern" style="display:none;font-size:12px;cursor:pointer;padding:2px 6px;border-radius:4px;background:#e8f5e9;color:#2e7d32;" title="点击切换TTS">🔊</span>
+            <button class="ctrl-btn" id="btn-close" title="关闭">✕</button>
+        </span>
+    </div>
+    <div id="typing-indicator">💭 正在输入...</div>
+    <div id="chat-messages"></div>
+    <div id="input-row">
+        <input id="chat-input" type="text" placeholder="说点什么..." maxlength="500">
+        <button class="chat-btn" id="btn-mic" title="语音">🎤</button>
+        <button class="chat-btn" id="btn-send" title="发送">➤</button>
+    </div>
+</div>
+<script src="src/core/ai-chat.js"></script>
+<script src="src/core/conversation-store.js"></script>
+<script>let chatAiClient = null;
+let chatStore = null;
+let chatMode = 'companion';
+let diaryStore = null;
+let currentPreset = null;
+let tavernTTSEnabled = true;
+
+async function init() {
+    // 同步设置页的主题
+    const savedTheme = localStorage.getItem('live2dpet_theme');
+    if (savedTheme === 'dark') document.body.classList.add('dark');
+    else if (savedTheme === null && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.body.classList.add('dark');
+    }
+    
+    chatStore = new ConversationStore();
+    await chatStore.load();
+    window.__chatStore = chatStore;
+    appendMessage('ai', '👋 你好呀！有什么想聊的吗？');
+    if (window.electronAPI) {
+        window.electronAPI.onReceiveMessage?.((msg) => {
+            if (msg && msg.text) appendMessage(msg.role || 'ai', msg.text);
+        });
+    }
+    try {
+        const cfg = await window.electronAPI?.loadConfig();
+        if (cfg?.appMode === 'tavern') {
+            document.getElementById('mode-toggle').click();
+        }
+    } catch(e) {}
+}
+
+// 预设下拉加载
+const BUILTIN_PRESETS = ['fantasy-tavern', 'cyber-bar', 'xianxia-tavern'];
+async function loadPresetDropdown() {
+    const sel = document.getElementById('preset-select');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">预设...</option>';
+    for (const name of BUILTIN_PRESETS) {
+        const opt = document.createElement('option');
+        opt.value = '__builtin__' + name;
+        opt.textContent = '📦 ' + name;
+        sel.appendChild(opt);
+    }
+    try {
+        const userPresets = JSON.parse(localStorage.getItem('live2dpet_presets') || '[]');
+        for (const p of userPresets) {
+            if (p && p.name) {
+                const opt = document.createElement('option');
+                opt.value = '__user__' + p.name;
+                opt.textContent = '⭐ ' + p.name;
+                sel.appendChild(opt);
+            }
+        }
+    } catch(e) {}
+}
+
+// 应用预设
+document.getElementById('preset-select')?.addEventListener('change', async (e) => {
+    if (!e.target.value) return;
+    let preset = null;
+    const val = e.target.value;
+    try {
+        if (val.startsWith('__builtin__')) {
+            const name = val.replace('__builtin__', '');
+            const res = await fetch('presets/' + name + '.json');
+            if (res.ok) preset = await res.json();
+        } else if (val.startsWith('__user__')) {
+            const name = val.replace('__user__', '');
+            const up = JSON.parse(localStorage.getItem('live2dpet_presets') || '[]');
+            preset = up.find(p => p.name === name);
+        }
+    } catch(e) {}
+    if (!preset) return;
+    currentPreset = preset;
+    localStorage.setItem('live2dpet_current_preset', JSON.stringify(preset));
+    const msgContainer = document.getElementById('chat-messages');
+    if (msgContainer) msgContainer.innerHTML = '';
+    if (preset.description) appendMessage('ai', '📜 ' + preset.description);
+    if (preset.worldBuilding) appendMessage('ai', '🌍 ' + preset.worldBuilding);
+    appendMessage('ai', preset.greeting || '🏰 欢迎！');
+    if (diaryStore) await diaryStore.add('assistant', preset.greeting || '欢迎');
+    e.target.value = '';
+});
+
+function appendMessage(role, text) {
+    const container = document.getElementById('chat-messages');
+    const div = document.createElement('div');
+    div.className = 'msg ' + role;
+    const span = document.createElement('span');
+    span.textContent = text;
+    div.appendChild(span);
+    const time = document.createElement('span');
+    time.className = 'msg-time';
+    const now = new Date();
+    time.textContent = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
+    div.appendChild(time);
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+}
+
+function showTyping(show) {
+    document.getElementById('typing-indicator').classList.toggle('show', show);
+}
+
+// 模式切换
+document.getElementById('mode-toggle').addEventListener('click', async () => {
+    const container = document.getElementById('chat-container');
+    const label = document.getElementById('mode-label');
+    const icon = document.getElementById('mode-icon');
+    
+    if (chatMode === 'companion') {
+        // 切换到酒馆模式
+        chatMode = 'tavern';
+        container.className = 'mode-tavern';
+        label.textContent = '酒馆模式';
+        icon.textContent = '🏰';
+        document.getElementById('chat-messages').innerHTML = '';
+        document.getElementById('preset-select').style.display = '';
+        document.getElementById('tts-toggle-tavern').style.display = '';
+        loadPresetDropdown();
+        
+        // 酒馆模式独立存储（使用 localStorage，不依赖 enhance-data 系统）
+        if (!diaryStore) {
+            diaryStore = { history: [], summaries: [] };
+            // 从 localStorage 加载
+            try {
+                const saved = localStorage.getItem('live2dpet_tavern_history');
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+                    diaryStore.history = parsed.history || [];
+                    diaryStore.summaries = parsed.summaries || [];
+                }
+            } catch(e) {}
+        }
+        // 显示历史消息
+        const tavernMsgs = diaryStore.history.slice(-30);
+        for (const msg of tavernMsgs) {
+            appendMessage(msg.role, msg.content);
+        }
+        // 显示上次日记摘要
+        if (diaryStore.summaries.length > 0) {
+            const last = diaryStore.summaries[diaryStore.summaries.length - 1];
+            appendMessage('ai', '📜 上次冒险日记：' + last.summary.slice(0, 100));
+        }
+        // TTS 开关（酒馆模式）
+        tavernTTSEnabled = localStorage.getItem('live2dpet_tavern_tts') !== 'off';
+        const ttsBtn = document.getElementById('tts-toggle-tavern');
+        if (ttsBtn) {
+            ttsBtn.textContent = tavernTTSEnabled ? '🔊' : '🔇';
+            ttsBtn.style.background = tavernTTSEnabled ? '#e8f5e9' : '#ffebee';
+            ttsBtn.style.color = tavernTTSEnabled ? '#2e7d32' : '#c62828';
+            ttsBtn.onclick = () => {
+                tavernTTSEnabled = !tavernTTSEnabled;
+                ttsBtn.textContent = tavernTTSEnabled ? '🔊' : '🔇';
+                ttsBtn.style.background = tavernTTSEnabled ? '#e8f5e9' : '#ffebee';
+                ttsBtn.style.color = tavernTTSEnabled ? '#2e7d32' : '#c62828';
+                localStorage.setItem('live2dpet_tavern_tts', tavernTTSEnabled ? 'on' : 'off');
+            };
+        }
+        
+        // 酒馆专用 AI 模型
+        let tavernModel = localStorage.getItem('live2dpet_tavern_model') || '';
+        // 在预设下拉旁边加个模型配置按钮
+        const tavernModelBtn = document.getElementById('tts-toggle-tavern');
+        // 添加模型配置UI（在预设下拉旁边显示）
+        
+        // 加载当前预设
+        try {
+            const saved = localStorage.getItem('live2dpet_current_preset');
+            if (saved) { currentPreset = JSON.parse(saved); }
+        } catch(e) {}
+        if (currentPreset) {
+            if (document.getElementById('chat-messages').children.length === 0) {
+                appendMessage('ai', '📜 ' + (currentPreset.description || ''));
+                if (currentPreset.worldBuilding) appendMessage('ai', '🌍 ' + currentPreset.worldBuilding);
+                appendMessage('ai', currentPreset.greeting || '🏰 欢迎来到酒馆！');
+            }
+        } else {
+            appendMessage('ai', '🏰 欢迎来到酒馆！选择上方预设来设定世界观~');
+        }
+        // 显示初始对话选项
+        showTavernStartOptions();
+        if (window.electronAPI) window.electronAPI.saveConfig({ appMode: 'tavern' });
+    } else {
+        // 切回陪伴模式
+        await generateDiary();
+        chatMode = 'companion';
+        container.className = 'mode-companion';
+        label.textContent = '陪伴模式';
+        icon.textContent = '🐱';
+        document.getElementById('preset-select').style.display = 'none';
+                document.getElementById('tts-toggle-tavern').style.display = 'none';
+        document.getElementById('chat-messages').innerHTML = '';
+        if (window.__chatStore) {
+            const recent = window.__chatStore.history.slice(-20);
+            for (const msg of recent) appendMessage(msg.role, msg.content);
+        }
+        if (window.electronAPI) window.electronAPI.saveConfig({ appMode: 'companion' });
+    }
+});
+
+// 发送消息（支持双模式）
+// 语音识别（Web Speech API）
+let isRecording = false;
+let recognition = null;
+
+document.getElementById('btn-mic').addEventListener('mousedown', async (e) => {
+    e.preventDefault();
+    if (isRecording) return;
+    
+    isRecording = true;
+    document.getElementById('btn-mic').classList.add('listening');
+    document.getElementById('btn-mic').textContent = '🔴';
+    appendMessage('ai', '🎤 正在听...');
+    
+    // 策略1: Windows SAPI（完全本地）
+    try {
+        const text = await transcribeViaWindows();
+        if (text) { stopVoice(); document.getElementById('chat-input').value = text; sendMessage(text); return; }
+    } catch(e) {}
+    
+    // 策略2: Mimo 云端
+    try {
+        const cfg = window.electronAPI ? await window.electronAPI.loadConfig() : {};
+        const stt = cfg.stt || {};
+        if (stt.apiKey) {
+            const text = await transcribeViaMimo(stt);
+            if (text) { stopVoice(); document.getElementById('chat-input').value = text; sendMessage(text); return; }
+        }
+    } catch(e) {}
+    
+    // 策略3: Web Speech API
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+        try {
+            const text = await new Promise((resolve) => {
+                const rec = new SpeechRecognition();
+                rec.lang = 'zh-CN'; rec.continuous = false; rec.interimResults = false; rec.maxAlternatives = 1;
+                const t = setTimeout(() => { rec.abort(); resolve(''); }, 8000);
+                rec.onresult = (ev) => { clearTimeout(t); resolve(ev.results[0][0].transcript); };
+                rec.onerror = () => { clearTimeout(t); resolve(''); };
+                rec.onend = () => { clearTimeout(t); };
+                rec.start();
+            });
+            if (text) { stopVoice(); document.getElementById('chat-input').value = text; sendMessage(text); return; }
+        } catch(e) {}
+    }
+    
+    stopVoice();
+    appendMessage('ai', '😅 语音识别不可用，请检查麦克风或网络');
+});
+
+document.getElementById('btn-mic').addEventListener('mouseup', (e) => {
+    e.preventDefault();
+    stopVoice();
+});
+
+document.getElementById('btn-mic').addEventListener('mouseleave', () => {
+    if (isRecording) stopVoice();
+});
+
+// Mimo 云端语音识别（Web Speech 失败时备用）
+async function transcribeViaMimo(sttConfig) {
+    try {
+        // 获取录音权限并录音
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+        const chunks = [];
+        
+        return new Promise((resolve) => {
+            mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+            mediaRecorder.onstop = async () => {
+                stream.getTracks().forEach(t => t.stop());
+                const blob = new Blob(chunks, { type: 'audio/webm' });
+                
+                // webm 转 wav
+                const wavBlob = await webmToWav(blob);
+                const buffer = await wavBlob.arrayBuffer();
+                const bytes = new Uint8Array(buffer);
+                let binary = '';
+                for (let i = 0; i < bytes.length; i += 8192) {
+                    binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + 8192, bytes.length)));
+                }
+                const base64 = btoa(binary);
+                const audioDataUrl = 'data:audio/wav;base64,' + base64;
+                
+                try {
+                    const baseURL = (sttConfig.baseURL || 'https://api.xiaomimimo.com/v1').replace(/\/audio\/transcriptions$/, '');
+                    const res = await fetch(baseURL.replace(/\/$/, '') + '/chat/completions', {
+                        method: 'POST',
+                        headers: { 'Authorization': 'Bearer ' + (sttConfig.apiKey || ''), 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            model: sttConfig.model || 'mimo-v2.5-asr',
+                            messages: [{ role: 'user', content: [{ type: 'input_audio', input_audio: { data: audioDataUrl } }] }],
+                            asr_options: { language: sttConfig.language || 'zh' }
+                        })
+                    });
+                    if (res.ok) {
+                        const result = await res.json();
+                        resolve(result?.choices?.[0]?.message?.content?.trim() || '');
+                    } else resolve('');
+                } catch(e) { resolve(''); }
+            };
+            
+            mediaRecorder.start();
+            setTimeout(() => { if (mediaRecorder.state !== 'inactive') mediaRecorder.stop(); }, 5000);
+        });
+    } catch(e) { return ''; }
+}
+
+// Windows 本地语音识别（通过 PowerShell 调用 SAPI）
+async function transcribeViaWindows() {
+    try {
+        // 如果能访问 electronAPI，通过主进程调用 PowerShell
+        if (window.electronAPI?.sttWindows) {
+            const result = await window.electronAPI.sttWindows();
+            if (result && result.success && result.text) {
+                return result.text.trim();
+            }
+        }
+        return '';
+    } catch(e) { return ''; }
+}
+
+// webm → wav 转换
+async function webmToWav(webmBlob) {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const arrayBuffer = await webmBlob.arrayBuffer();
+    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+    const numChannels = audioBuffer.numberOfChannels;
+    const sampleRate = audioBuffer.sampleRate;
+    const length = audioBuffer.length;
+    const pcmData = new Float32Array(length * numChannels);
+    for (let ch = 0; ch < numChannels; ch++) {
+        const cd = audioBuffer.getChannelData(ch);
+        for (let i = 0; i < length; i++) pcmData[i * numChannels + ch] = cd[i];
+    }
+    const pcm16 = new Int16Array(pcmData.length);
+    for (let i = 0; i < pcmData.length; i++) {
+        const s = Math.max(-1, Math.min(1, pcmData[i]));
+        pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+    }
+    const dataSize = pcm16.length * 2;
+    const buf = new ArrayBuffer(44 + dataSize);
+    const v = new DataView(buf);
+    const ws = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+    ws(0, 'RIFF'); v.setUint32(4, 36 + dataSize, true);
+    ws(8, 'WAVE'); ws(12, 'fmt ');
+    v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+    v.setUint16(22, numChannels, true); v.setUint32(24, sampleRate, true);
+    v.setUint32(28, sampleRate * numChannels * 2, true);
+    v.setUint16(32, numChannels * 2, true); v.setUint16(34, 16, true);
+    ws(36, 'data'); v.setUint32(40, dataSize, true);
+    new Int16Array(buf, 44).set(pcm16);
+    audioCtx.close();
+    return new Blob([buf], { type: 'audio/wav' });
+}
+
+function stopVoice() {
+    if (recognition) {
+        try { recognition.abort(); } catch(e) {}
+        recognition = null;
+    }
+    isRecording = false;
+    const mic = document.getElementById('btn-mic');
+    mic.classList.remove('listening');
+    mic.textContent = '🎤';
+}
+
+async function sendMessage(text) {
+    if (!text || !text.trim()) return;
+    const msg = text.trim();
+    document.getElementById('chat-input').value = '';
+    appendMessage('user', msg);
+
+    if (chatMode === 'tavern' && diaryStore) {
+        diaryStore.history.push({ role: 'user', content: msg, timestamp: Date.now() });
+        saveTavernStore();
+        showTyping(true);
+        try {
+            if (!chatAiClient) { chatAiClient = new AIChatClient(); await chatAiClient.init(); window.__chatAiClient = chatAiClient; }
+            // 酒馆专用模型
+            const tavernModelCfg = localStorage.getItem('live2dpet_tavern_model');
+            if (tavernModelCfg) {
+                try {
+                    const cfg = JSON.parse(tavernModelCfg);
+                    if (cfg.modelName) chatAiClient.modelName = cfg.modelName;
+                    if (cfg.baseURL) chatAiClient.baseURL = cfg.baseURL;
+                    if (cfg.apiKey) chatAiClient.apiKey = cfg.apiKey;
+                } catch(e) {}
+            }
+            const ctx = buildTavernContext();
+            const persona = (currentPreset && currentPreset.systemPrompt) 
+                ? currentPreset.systemPrompt + '\n\n' 
+                : '你是酒馆老板，用1-2句话回应冒险者。\n\n';
+            const msgs = [
+                { role: 'system', content: persona + '[酒馆记忆]\n' + ctx },
+                { role: 'user', content: msg }
+            ];
+            const reply = await chatAiClient.callAPI(msgs);
+            showTyping(false);
+            appendMessage('ai', reply);
+            diaryStore.history.push({ role: 'assistant', content: reply, timestamp: Date.now() });
+            saveTavernStore();
+            if (window.electronAPI?.ttsSynthesize && tavernTTSEnabled) {
+                try { const t = await window.electronAPI.ttsSynthesize(reply); if(t?.success) new Audio('data:audio/wav;base64,'+t.wav).play().catch(()=>{}); } catch(e){}
+            }
+            // 生成对话选项
+            generateTavernOptions(reply, msg);
+        } catch(e) { showTyping(false); appendMessage('ai', '😅 ' + e.message); }
+        return;
+    }
+
+    // 陪伴模式
+    if (chatStore) await chatStore.add('user', msg);
+    showTyping(true);
+    try {
+        if (!chatAiClient) { chatAiClient = new AIChatClient(); await chatAiClient.init(); window.__chatAiClient = chatAiClient; }
+        let mc = '';
+        if (chatStore) { const e = chatStore.getEnhancedContext(5); if(e) mc = '\n\n[长期记忆]\n' + e; }
+        const msgs = [{ role: 'system', content: '你是可爱的桌面宠物，简短回答。' + mc }, { role: 'user', content: msg }];
+        const reply = await chatAiClient.callAPI(msgs);
+        showTyping(false);
+        appendMessage('ai', reply);
+        if (chatStore) await chatStore.add('assistant', reply);
+        if (window.electronAPI?.ttsSynthesize) {
+            try { const t = await window.electronAPI.ttsSynthesize(reply); if(t?.success) new Audio('data:audio/wav;base64,'+t.wav).play().catch(()=>{}); } catch(e){}
+        }
+    } catch(e) { showTyping(false); appendMessage('ai', '😅 ' + e.message); }
+}
+
+// 对话选项样式
+const tavernOptionsStyle = document.createElement('style');
+tavernOptionsStyle.textContent = '.tavern-option-btn{display:inline-block;margin:3px 4px;padding:5px 12px;border:1px solid #e75480;border-radius:14px;background:rgba(231,84,128,0.08);color:#e75480;cursor:pointer;font-size:12px;transition:all 0.2s;line-height:1.4;white-space:normal;word-break:break-word;max-width:100%;}.tavern-option-btn:hover{background:#e75480;color:white;}.tavern-options-container{padding:4px 0 8px;display:flex;flex-wrap:wrap;gap:2px;}';
+document.head.appendChild(tavernOptionsStyle);
+
+// 生成对话选项
+async function generateTavernOptions(lastReply, lastUserMsg) {
+    const container = document.getElementById('chat-messages');
+    if (!container) return;
+    
+    // 移除旧选项
+    const oldOptions = container.querySelector('.tavern-options-container');
+    if (oldOptions) oldOptions.remove();
+    
+    // 默认选项（API 失败时的备选）
+    let options = ['继续对话', '询问更多', '换个话题'];
+    
+    try {
+        if (chatAiClient && chatAiClient.isConfigured()) {
+            const recentMsgs = diaryStore.history.slice(-6).map(m => m.content).join(' | ');
+            const optReply = await chatAiClient.callAPI([
+                { role: 'system', content: '你是一个RPG选项生成器。根据最近对话生成3个简短的选项供玩家选择。每个不超过15字。只输出选项，每行一个，不要序号和其他内容。' },
+                { role: 'user', content: '最近对话：' + recentMsgs }
+            ]);
+            
+            if (optReply) {
+                const parsed = optReply.split('\n').map(l => l.replace(/^[\d\.\s\)\-]+/, '').trim()).filter(l => l.length > 0 && l.length < 30);
+                if (parsed.length >= 2) options = parsed.slice(0, 3);
+            }
+        }
+    } catch(e) {
+        console.warn('[TavernOptions] API失败，使用默认选项:', e.message);
+    }
+    
+    const optDiv = document.createElement('div');
+    optDiv.className = 'tavern-options-container';
+    
+    options.forEach(optText => {
+        const btn = document.createElement('span');
+        btn.className = 'tavern-option-btn';
+        btn.textContent = optText;
+        btn.onclick = () => {
+            optDiv.remove();
+            sendMessage(optText);
+        };
+        optDiv.appendChild(btn);
+    });
+    
+    container.appendChild(optDiv);
+    container.scrollTop = container.scrollHeight;
+}
+
+// 酒馆初始选项（进入模式时显示）
+function showTavernStartOptions() {
+    const container = document.getElementById('chat-messages');
+    if (!container) return;
+    const oldOptions = container.querySelector('.tavern-options-container');
+    if (oldOptions) oldOptions.remove();
+    
+    // 根据预设生成初始选项
+    let options = ['你好', '今天有什么故事吗', '我想了解一下这里'];
+    if (currentPreset) {
+        if (currentPreset.userRole) {
+            const role = currentPreset.userRole;
+            options = [
+                '你好，我是新来的' + role,
+                '给我讲讲这里的故事',
+                '我需要一些帮助'
+            ];
+        }
+        if (currentPreset.greeting) {
+            // 根据开场白调整选项
+            if (currentPreset.greeting.includes('酒')) options = ['来一杯招牌酒', '有什么推荐吗', '我只是路过'];
+            else if (currentPreset.greeting.includes('茶')) options = ['来一壶灵茶', '这里是什么地方', '我想打听点事'];
+            else if (currentPreset.greeting.includes('霓虹') || currentPreset.greeting.includes('赛博')) options = ['来杯电子羊', '今天有什么新闻', '我需要一条情报'];
+        }
+    }
+    
+    const optDiv = document.createElement('div');
+    optDiv.className = 'tavern-options-container';
+    options.forEach(optText => {
+        const btn = document.createElement('span');
+        btn.className = 'tavern-option-btn';
+        btn.textContent = optText;
+        btn.onclick = () => { optDiv.remove(); sendMessage(optText); };
+        optDiv.appendChild(btn);
+    });
+    container.appendChild(optDiv);
+}
+
+// 酒馆存储辅助
+function saveTavernStore() {
+    try {
+        localStorage.setItem('live2dpet_tavern_history', JSON.stringify({
+            history: diaryStore.history.slice(-100),
+            summaries: (diaryStore.summaries || []).slice(-20)
+        }));
+    } catch(e) {}
+}
+
+function buildTavernContext() {
+    if (!diaryStore || !diaryStore.history) return '';
+    const recent = diaryStore.history.slice(-10).map(m => {
+        const role = m.role === 'user' ? (currentPreset?.userRole || '冒险者') : (currentPreset?.aiRole || '酒馆老板');
+        return role + ': ' + m.content;
+    }).join('\n');
+    if (diaryStore.summaries && diaryStore.summaries.length > 0) {
+        return '最近对话:\n' + recent + '\n\n历史总结:\n' + diaryStore.summaries.slice(-2).map(s => s.summary).join('\n');
+    }
+    return '最近对话:\n' + recent;
+}
+
+// 日记生成
+async function generateDiary() {
+    if (chatMode !== 'tavern' || !diaryStore || diaryStore.history.length < 4) return;
+    try {
+        if (!chatAiClient) { chatAiClient = new AIChatClient(); await chatAiClient.init(); }
+        const userLabel = (currentPreset && currentPreset.userRole) || '冒险者';
+const aiLabel = (currentPreset && currentPreset.aiRole) || '酒馆老板';
+
+const recent = diaryStore.history.slice(-20).map(m => (m.role==='user'?userLabel:aiLabel)+': '+m.content).join('\\n');
+        const diaryPrompt = (currentPreset && currentPreset.diaryPrompt) 
+            ? currentPreset.diaryPrompt 
+            : '你是酒馆老板，写100字左右的冒险日记。';
+        const diary = await chatAiClient.callAPI([
+            { role: 'system', content: diaryPrompt },
+            { role: 'user', content: '对话：\n' + recent }
+        ]);
+        if (diary) {
+            diaryStore.history.push({ role: 'assistant', content: '[日记] ' + diary, timestamp: Date.now() });
+            diaryStore.summaries = diaryStore.summaries || [];
+            diaryStore.summaries.push({ summary: diary.slice(0, 200), timestamp: Date.now(), timeLabel: new Date().toLocaleString() });
+            saveTavernStore();
+            // 弹窗显示日记
+            const popup = document.createElement('div');
+            popup.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);z-index:999;display:flex;justify-content:center;align-items:center;';
+            const box = document.createElement('div');
+            box.style.cssText = 'background:white;border-radius:16px;padding:24px;max-width:400px;max-height:60vh;overflow-y:auto;font-size:13px;line-height:1.8;box-shadow:0 8px 32px rgba(0,0,0,0.2);';
+            box.innerHTML = '<h3 style="color:#e75480;margin-bottom:12px;text-align:center;">📜 冒险日记</h3><div style="max-height:40vh;overflow-y:auto;margin-bottom:12px;">' + diary.replace(/\\n/g, '<br>') + '</div><button style="display:block;margin:0 auto;padding:8px 32px;border:none;border-radius:20px;background:#e75480;color:white;cursor:pointer;font-size:14px;font-weight:bold;">已阅 ✓</button>';
+            popup.appendChild(box);
+            document.body.appendChild(popup);
+            // 用 querySelector 找按钮，避免 id 冲突
+            popup.querySelector('button').onclick = () => popup.remove();
+        }
+    } catch(e) { console.warn('[Diary]', e.message); }
+}
+
+document.getElementById('btn-send').addEventListener('click', () => sendMessage(document.getElementById('chat-input').value));
+document.getElementById('chat-input').addEventListener('keydown', (e) => { if(e.key==='Enter'&&!e.shiftKey) { e.preventDefault(); sendMessage(e.target.value); }});
+document.getElementById('btn-close').addEventListener('click', () => window.close());
+
+init();</script>
+</body>
+</html>

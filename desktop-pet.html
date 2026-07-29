@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Desktop Pet</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body {
+            width: 100%; height: 100%;
+            background: transparent;
+            overflow: hidden;
+            user-select: none;
+            -webkit-app-region: drag;
+        }
+        #pet-container {
+            width: 100%; height: 100%;
+            display: flex; align-items: center; justify-content: center;
+            position: relative;
+        }
+        #live2d-canvas {
+            position: absolute; top: 0; left: 0;
+            -webkit-app-region: no-drag;
+        }
+        #static-image {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%;
+            height: auto;
+            transform-origin: top center;
+            display: none;
+            -webkit-app-region: no-drag;
+        }
+        #placeholder {
+            max-width: 80%; max-height: 80%;
+            object-fit: contain;
+            display: none;
+        }
+        .controls {
+            position: absolute; bottom: 5px; right: 5px;
+            display: flex; gap: 3px;
+            -webkit-app-region: no-drag;
+            opacity: 0; transition: opacity 0.3s;
+            z-index: 100;
+        }
+        #pet-container:hover .controls { opacity: 1; }
+        .ctrl-btn {
+            width: 24px; height: 24px;
+            border: none; border-radius: 50%;
+            background: rgba(255,255,255,0.8);
+            cursor: pointer; font-size: 12px;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .ctrl-btn:hover { background: rgba(255,255,255,1); }
+        .ctrl-btn:disabled { opacity: 0.3; cursor: default; }
+
+        /* ===== 聊天框样式（可拖动 + 置顶） ===== */
+        #chat-overlay {
+            position: absolute; top: 5px; left: 5px;
+            width: 280px; z-index: 200;
+            display: none; flex-direction: column;
+            -webkit-app-region: no-drag;
+            font-family: 'Microsoft YaHei', sans-serif;
+            cursor: default;
+            max-height: calc(100% - 100px);
+        }
+        /* ===== 日记弹窗 ===== */
+        #diary-popup {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.4);
+            z-index: 999;
+            justify-content: center;
+            align-items: center;
+        }
+        #diary-popup.show { display: flex; }
+        #diary-content {
+            background: white;
+            border-radius: 16px;
+            padding: 24px;
+            max-width: 400px;
+            max-height: 500px;
+            overflow-y: auto;
+            font-size: 13px;
+            line-height: 1.8;
+            color: #333;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+            position: relative;
+            font-family: 'Microsoft YaHei', 'KaiTi', serif;
+        }
+        #diary-content h3 {
+            color: #e75480;
+            margin-bottom: 12px;
+            font-size: 16px;
+            text-align: center;
+        }
+        #diary-close-btn {
+            display: block;
+            margin: 16px auto 0;
+            padding: 6px 24px;
+            border: none;
+            border-radius: 20px;
+            background: #e75480;
+            color: white;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        #diary-close-btn:hover { background: #d4446a; }
+        .chat-time {
+            font-size: 10px; color: #999; text-align: center;
+            padding: 2px 0;
+        }
+        /* ===== 打字指示器 ===== */
+        #typing-indicator {
+            display: none;
+            font-size: 11px;
+            color: #e75480;
+            padding: 2px 8px;
+            text-align: left;
+            animation: typingPulse 1.2s ease-in-out infinite;
+        }
+        #typing-indicator.show { display: block; }
+        @keyframes typingPulse {
+            0%, 100% { opacity: 0.5; }
+            50% { opacity: 1; }
+        }
+
+        /* ===== 语音VAD电平指示 ===== */
+        #vad-indicator {
+            display: none;
+            position: absolute;
+            bottom: 42px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 120px;
+            height: 4px;
+            background: rgba(0,0,0,0.1);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        #vad-indicator.show { display: block; }
+        #vad-level {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #4caf50, #ff9800, #f44336);
+            border-radius: 2px;
+            transition: width 0.1s;
+        }
+
+        /* ===== 快捷回复 ===== */
+        #quick-replies {
+            display: none;
+            gap: 4px;
+            padding: 4px 6px;
+            flex-wrap: wrap;
+            background: rgba(255,255,255,0.9);
+            border-top: 1px solid rgba(0,0,0,0.05);
+        }
+        #quick-replies.show { display: flex; }
+        .quick-reply-btn {
+            font-size: 11px;
+            padding: 3px 10px;
+            border: 1px solid #ddd;
+            border-radius: 12px;
+            background: white;
+            color: #666;
+            cursor: pointer;
+            transition: all 0.2s;
+            -webkit-app-region: no-drag;
+        }
+        .quick-reply-btn:hover {
+            background: #fce4ec;
+            border-color: #e75480;
+            color: #e75480;
+        }
+
+        /* ===== 录音时长 ===== */
+        #recording-time {
+            display: none;
+            font-size: 10px;
+            color: #ff4444;
+            text-align: center;
+            padding: 2px 0;
+        }
+        #recording-time.show { display: block; }
+
+        /* ===== 消息时间戳 ===== */
+        .msg-time {
+            font-size: 9px;
+            color: #bbb;
+            display: block;
+            margin-top: -1px;
+        }
+        .msg.user .msg-time { text-align: right; }
+        .msg.ai .msg-time { text-align: left; }
+    </style>
+</head>
+<body>
+    <div id="pet-container">
+        <canvas id="live2d-canvas"></canvas>
+        <img id="static-image" alt="pet">
+        <img id="placeholder" alt="placeholder">
+        <div class="controls" id="pet-controls">
+            <button class="ctrl-btn" id="btn-chat-toggle" title="Chat">💬</button>
+            <button class="ctrl-btn" id="btn-settings" title="Settings">⚙</button>
+            <button class="ctrl-btn" id="btn-close" title="Close">✕</button>
+        </div>
+        <!-- Canvas Y 实时调整 -->
+        <div id="canvas-y-adjust" style="position:absolute;bottom:32px;left:50%;transform:translateX(-50%);z-index:50;display:none;align-items:center;gap:4px;background:rgba(255,255,255,0.7);backdrop-filter:blur(8px);border-radius:8px;padding:2px 8px;-webkit-app-region:no-drag;">
+            <span id="canvas-y-label" style="font-size:9px;color:#999;white-space:nowrap;">Y:</span>
+            <input type="range" id="canvas-y-slider-live" min="0.3" max="0.9" step="0.01" value="0.60" style="width:60px;height:3px;margin:0;padding:0;vertical-align:middle;">
+            <span id="canvas-y-value" style="font-size:9px;color:#666;min-width:30px;">0.60</span>
+        </div>
+        <!-- 右下角缩放把手 -->
+        <div id="resize-handle" style="position:absolute;right:0;bottom:0;width:16px;height:16px;z-index:100;cursor:nwse-resize;-webkit-app-region:no-drag;display:none;">
+            <svg viewBox="0 0 16 16" style="width:100%;height:100%;"><path d="M16 0v16H0" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="2"/></svg>
+        </div>
+        <!-- 聊天框（可拖动 + 多模式） -->
+        </div>
+    </div>
+
+    <script src="libs/live2dcubismcore.min.js"></script>
+    <script src="libs/pixi.min.js"></script>
+    <script src="libs/cubism4.min.js"></script>
+    <script>
+        // Forward renderer console to main process (visible without --enable-logging)
+        if (window.electronAPI?.rendererLog) {
+            const _log = console.log, _warn = console.warn, _error = console.error;
+            for (const level of ['log', 'warn', 'error']) {
+                const orig = console[level];
+                console[level] = (...args) => {
+                    orig.apply(console, args);
+                    try { window.electronAPI.rendererLog(level, args.map(String)); } catch {}
+                };
+            }
+        }
+    </script>
+    <script src="src/core/ai-chat.js"></script>
+    <script src="src/core/conversation-store.js"></script>
+    <script src="src/renderer/model-adapter.js"></script>
+    <script>
+        let currentAdapter = null;
+        let trackX = 0, trackY = 0;
+
+        // ========== Adapter-based Init ==========
+        async function initModel() {
+            try {
+                const config = await window.electronAPI.loadConfig();
+                const modelConfig = config.model || { type: 'none' };
+
+                // Resolve model directory for Live2D
+                if (modelConfig.type === 'live2d') {
+                    const validation = await window.electronAPI.validateModelPaths();
+                    if (!validation.valid) {
+                        console.warn('[DesktopPet] Model validation failed:', validation.error);
+                        modelConfig.type = 'none';
+                    } else if (validation.modelDir) {
+                        modelConfig._resolvedModelDir = validation.modelDir;
+                    }
+                }
+
+                // 读取保存的 canvasYRatio
+                try {
+                    const fullCfg = await window.electronAPI.loadConfig();
+                    if (fullCfg.canvasYRatio !== undefined) {
+                        modelConfig.canvasYRatio = fullCfg.canvasYRatio;
+                    }
+                } catch(e) {}
+                
+                currentAdapter = createModelAdapter(modelConfig);
+                const container = document.getElementById('pet-container');
+                await currentAdapter.load(container);
+
+                if (currentAdapter.getType() === 'live2d') {
+                    startMouseTracking();
+                }
+
+                console.log('[DesktopPet] Model loaded, type:', currentAdapter.getType());
+            } catch (error) {
+                console.warn('[DesktopPet] Model load failed, falling back to placeholder:', error);
+                currentAdapter = new NullAdapter({});
+                await currentAdapter.load(document.getElementById('pet-container'));
+            }
+        }
+
+        // ========== Mouse Tracking ==========
+        let _mouseTrackingId = null;
+        function startMouseTracking() {
+            if (_mouseTrackingId) clearInterval(_mouseTrackingId);
+            _mouseTrackingId = setInterval(async () => {
+                if (!window.electronAPI) return;
+                try {
+                    const cursor = await window.electronAPI.getCursorPosition();
+                    const bounds = await window.electronAPI.getWindowBounds();
+                    const cx = bounds.x + bounds.width / 2;
+                    const cy = bounds.y + bounds.height / 2;
+                    trackX = Math.max(-1, Math.min(1, (cursor.x - cx) / 300));
+                    trackY = Math.max(-1, Math.min(1, (cursor.y - cy) / 300));
+                    if (currentAdapter) {
+                        currentAdapter.updateParams(trackX, trackY);
+                    }
+                } catch (e) {}
+            }, 50);
+        }
+
+        // ========== Resize ==========
+        window.addEventListener('resize', () => {
+            if (currentAdapter) {
+                currentAdapter.resize(window.innerWidth, window.innerHeight);
+            }
+        });
+
+        // ========== Controls ==========
+
+        document.getElementById('btn-settings').addEventListener('click', () => {
+            if (window.electronAPI) window.electronAPI.showSettings();
+        });
+
+        document.getElementById('btn-close').addEventListener('click', () => {
+            if (window.electronAPI) window.electronAPI.closePetWindow();
+        });
+
+        // Right-click context menu
+        document.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            if (window.electronAPI) window.electronAPI.showPetContextMenu();
+        });
+
+        // Listen for size changes from context menu
+
+        // ========== Expression System (via Adapter) ==========
+        if (window.electronAPI && window.electronAPI.onPlayExpression) {
+            window.electronAPI.onPlayExpression((expressionName) => {
+                if (currentAdapter) {
+                    console.log('[DesktopPet] Playing expression:', expressionName);
+                    currentAdapter.setExpression(expressionName);
+                }
+            });
+        }
+
+        if (window.electronAPI && window.electronAPI.onRevertExpression) {
+            window.electronAPI.onRevertExpression(() => {
+                if (currentAdapter) {
+                    console.log('[DesktopPet] Reverting expression');
+                    currentAdapter.revertExpression();
+                }
+            });
+        }
+
+        // ========== Motion System (via Adapter) ==========
+        if (window.electronAPI && window.electronAPI.onPlayMotion) {
+            window.electronAPI.onPlayMotion((group, index) => {
+                if (currentAdapter) {
+                    console.log(`[DesktopPet] Playing motion: ${group}[${index}]`);
+                    currentAdapter.playMotion(group, index);
+                }
+            });
+        }
+
+        // ========== Character Update ==========
+        if (window.electronAPI && window.electronAPI.onCharacterUpdate) {
+            window.electronAPI.onCharacterUpdate((data) => {
+                console.log('[DesktopPet] Character update:', data);
+            });
+        }
+
+        // ========== Talking State (for Image Adapter) ==========
+        if (window.electronAPI && window.electronAPI.onTalkingStateChanged) {
+            window.electronAPI.onTalkingStateChanged((isTalking) => {
+                // ImageAdapter handles this internally via its own listener
+                // This is a fallback in case the adapter registered after the event
+            });
+        }
+
+        // ========== Model Config Hot-Reload ==========
+        if (window.electronAPI && window.electronAPI.onModelConfigUpdate) {
+            window.electronAPI.onModelConfigUpdate(async (newConfig) => {
+                console.log('[DesktopPet] Model config update, reloading...');
+                if (currentAdapter) {
+                    currentAdapter.destroy();
+                }
+                await initModel();
+            });
+        }
+
+        // ========== Hover Detection ==========
+        document.getElementById('pet-container').addEventListener('mouseenter', () => {
+            if (window.electronAPI && window.electronAPI.reportHoverState) {
+                window.electronAPI.reportHoverState(true);
+            }
+        });
+        document.getElementById('pet-container').addEventListener('mouseleave', () => {
+            if (window.electronAPI && window.electronAPI.reportHoverState) {
+                window.electronAPI.reportHoverState(false);
+            }
+        });
+
+        // ========== Interaction Reporting (shared) ==========
+        function reportInteraction(type, area, durationMs, extra) {
+            console.log(`[DesktopPet] ${type}: area=${area} duration=${durationMs}ms`);
+            if (window.electronAPI?.reportHit) {
+                window.electronAPI.reportHit({ type, area, durationMs, timestamp: Date.now(), ...extra });
+            }
+        }
+
+        // ========== Hit Detection + Custom Drag ==========
+        // Canvas/image are no-drag; we handle click vs drag manually.
+        // Uses screenX/screenY (absolute) to avoid jitter from window movement.
+        // On every drag frame, setBounds locks both position AND size to prevent OS resize.
+        (function() {
+            let downX = 0, downY = 0, downTime = 0, isDragging = false;
+            let winX = 0, winY = 0, winW = 0, winH = 0, boundsReady = false;
+            const CLICK_THRESHOLD_MS = 300;
+            const CLICK_THRESHOLD_PX = 8;
+
+            const SWIPE_COOLDOWN_MS = 3000;
+            let lastSwipeTime = 0;
+
+            const targets = ['live2d-canvas', 'static-image'];
+            for (const id of targets) {
+                const el = document.getElementById(id);
+                if (!el) continue;
+
+                el.addEventListener('pointerenter', () => {
+                    if (downTime !== 0) return;
+                    const now = Date.now();
+                    if (now - lastSwipeTime < SWIPE_COOLDOWN_MS) return;
+                    lastSwipeTime = now;
+                    reportInteraction('swipe', 'body', 0);
+                });
+
+                el.addEventListener('pointerdown', (e) => {
+                    downX = e.screenX;
+                    downY = e.screenY;
+                    downTime = Date.now();
+                    isDragging = false;
+                    boundsReady = false;
+                    el.setPointerCapture(e.pointerId);
+                    if (window.electronAPI?.getWindowBounds) {
+                        window.electronAPI.getWindowBounds().then(b => {
+                            winX = b.x; winY = b.y; winW = b.width; winH = b.height;
+                            boundsReady = true;
+                        }).catch(() => {});
+                    }
+                });
+
+                el.addEventListener('pointermove', (e) => {
+                    if (downTime === 0) return;
+                    const dx = e.screenX - downX;
+                    const dy = e.screenY - downY;
+                    if (!isDragging && (Math.abs(dx) > CLICK_THRESHOLD_PX || Math.abs(dy) > CLICK_THRESHOLD_PX)) {
+                        isDragging = true;
+                    }
+                    if (isDragging && boundsReady && window.electronAPI?.setWindowPosition) {
+                        window.electronAPI.setWindowPosition(
+                            Math.round(winX + dx), Math.round(winY + dy), winW, winH
+                        );
+                    }
+                });
+
+                el.addEventListener('pointerup', (e) => {
+                    const elapsed = Date.now() - downTime;
+                    const dx = Math.abs(e.screenX - downX);
+                    const dy = Math.abs(e.screenY - downY);
+                    downTime = 0;
+
+                    if (isDragging) {
+                        reportInteraction('drag', 'body', elapsed);
+                    } else if (elapsed < CLICK_THRESHOLD_MS && dx < CLICK_THRESHOLD_PX && dy < CLICK_THRESHOLD_PX) {
+                        const area = getHitArea(e.clientX, e.clientY);
+                        reportInteraction('click', area, elapsed);
+                    } else if (elapsed >= CLICK_THRESHOLD_MS) {
+                        const area = getHitArea(e.clientX, e.clientY);
+                        reportInteraction('touch', area, elapsed);
+                    }
+                    isDragging = false;
+                });
+            }
+
+            function getHitArea(x, y) {
+                if (currentAdapter && currentAdapter.getType() === 'live2d' && currentAdapter.model) {
+                    try {
+                        const areas = currentAdapter.model.hitTest(x, y);
+                        if (areas && areas.length > 0) return areas[0];
+                    } catch(e) { console.warn('[DesktopPet] hitTest error:', e); }
+                }
+                return 'body';
+            }
+        })();
+
+        // 聊天按钮 → 打开独立窗口
+        document.getElementById('btn-chat-toggle').addEventListener('click', () => {
+            if (window.electronAPI?.createChatWindow) {
+                window.electronAPI.createChatWindow();
+            }
+        });
+
+        // 监听来自设置页的 Canvas Y 变更
+        if (window.electronAPI?.onSetCanvasY) {
+            window.electronAPI.onSetCanvasY((val) => {
+                const slider = document.getElementById('canvas-y-slider-live');
+                const label = document.getElementById('canvas-y-value');
+                if (slider) { slider.value = val; label.textContent = val.toFixed(2); }
+                if (currentAdapter && currentAdapter.setCanvasY) currentAdapter.setCanvasY(val);
+            });
+        }
+
+        // ===== Canvas Y 实时调整 =====
+        (function() {
+            const slider = document.getElementById('canvas-y-slider-live');
+            const label = document.getElementById('canvas-y-value');
+            const adjuster = document.getElementById('canvas-y-adjust');
+            if (!slider || !adjuster) return;
+            const container = document.getElementById('pet-container');
+            let hideTimer = null;
+            container.addEventListener('mouseenter', () => { adjuster.style.display = 'flex'; });
+            container.addEventListener('mouseleave', () => { hideTimer = setTimeout(() => { adjuster.style.display = 'none'; }, 2000); });
+            adjuster.addEventListener('mouseenter', () => { clearTimeout(hideTimer); });
+            slider.addEventListener('input', () => {
+                const val = parseFloat(slider.value);
+                label.textContent = val.toFixed(2);
+                if (currentAdapter && currentAdapter.setCanvasY) {
+                    currentAdapter.setCanvasY(val);
+                }
+            });
+            // 鼠标松开保存配置（只保存 canvasYRatio，不触发模型重载）
+            slider.addEventListener('change', async () => {
+                const val = parseFloat(slider.value);
+                if (window.electronAPI) {
+                    await window.electronAPI.saveConfig({ canvasYRatio: val });
+                }
+            });
+            // 加载保存的值
+            (async () => {
+                try { const cfg = await window.electronAPI?.loadConfig(); if (cfg?.model?.canvasYRatio) { slider.value = cfg.model.canvasYRatio; label.textContent = cfg.model.canvasYRatio.toFixed(2); } } catch(e) {}
+            })();
+        })();
+
+        // ===== 自由缩放（右下角拖拽） =====
+        (function() {
+            const handle = document.getElementById('resize-handle');
+            const container = document.getElementById('pet-container');
+            if (!handle || !window.electronAPI) return;
+            container.addEventListener('mouseenter', () => { handle.style.display = 'block'; });
+            container.addEventListener('mouseleave', () => { handle.style.display = 'none'; });
+            handle.addEventListener('mouseenter', () => { handle.style.display = 'block'; });
+            let isResizing = false, startX, startY, startW, startH;
+            handle.addEventListener('mousedown', async (e) => {
+                e.preventDefault(); e.stopPropagation();
+                isResizing = true; startX = e.screenX; startY = e.screenY;
+                const b = await window.electronAPI.getWindowBounds();
+                startW = b.width; startH = b.height;
+                const onMove = (ev) => { if (!isResizing) return; window.electronAPI.setWindowSize(Math.max(150, startW + (ev.screenX - startX)), Math.max(150, startH + (ev.screenY - startY))); };
+                const onUp = () => { isResizing = false; document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+                document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
+            });
+        })();
+
+        initModel();
+        console.log('[DesktopPet] Window loaded');
+    </script>
+</body>
+</html>

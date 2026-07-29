@@ -1,0 +1,64 @@
+{
+  "name": "live2dpet",
+  "version": "1.5.0",
+  "description": "AI desktop pet companion with multi-backend TTS, dual mode, enhanced memory",
+  "author": "x380kkm",
+  "main": "main.js",
+  "scripts": {
+    "start": "node launch.js",
+    "dev": "node launch.js --dev",
+    "test": "node --test tests/test-core.js tests/test-enhance.js tests/test-config-manager.js tests/test-crypto-utils.js tests/test-validators.js",
+    "build": "electron-builder --win portable",
+    "build:dir": "electron-builder --win dir"
+  },
+  "dependencies": {
+    "active-win": "^8.2.1",
+    "axios": "^1.17.0",
+    "electron-log": "^5.4.3",
+    "koffi": "^2.15.1",
+    "ws": "^8.21.1"
+  },
+  "devDependencies": {
+    "electron": "^42.4.0",
+    "electron-builder": "^26.15.3"
+  },
+  "overrides": {
+    "node-gyp": "^13.0.0",
+    "@mapbox/node-pre-gyp": "^2.0.3",
+    "tar": "^7.5.16"
+  },
+  "build": {
+    "appId": "com.live2dpet.app",
+    "productName": "Live2DPet",
+    "npmRebuild": false,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "launch.js",
+      "index.html",
+      "desktop-pet.html",
+      "pet-chat-bubble.html",
+      "config.json",
+      "src/**/*",
+      "assets/**/*",
+      "libs/**/*",
+      "pet-chat-window.html",
+      "使用说明.md",
+      "presets/**/*"
+    ],
+    "asarUnpack": [
+      "node_modules/koffi/**"
+    ],
+    "win": {
+      "target": "portable",
+      "icon": "assets/app-icon.ico",
+      "signAndEditExecutable": true
+    },
+    "portable": {
+      "artifactName": "Live2DPet.exe"
+    }
+  }
+}

@@ -1,0 +1,285 @@
+{
+  "configVersion": 1,
+  "apiKey": "",
+  "baseURL": "http://localhost:11434/v1",
+  "modelName": "qwen3.5:2b",
+  "interval": 90,
+  "chatGap": 5,
+  "emotionFrequency": 30,
+  "enabledEmotions": [
+    "光环",
+    "兔耳朵",
+    "关耳朵",
+    "变小",
+    "变色",
+    "吓",
+    "呆毛关闭",
+    "呆毛旋转",
+    "唱歌",
+    "头",
+    "害怕",
+    "抱枕",
+    "星星眼",
+    "棉棒",
+    "泪目",
+    "爱心眼",
+    "生气",
+    "白色酱蛋糕",
+    "粉色蛋糕",
+    "翅膀关",
+    "脸红",
+    "舌头",
+    "钢板",
+    "雾",
+    "喂布丁",
+    "待机动画",
+    "睡觉动画"
+  ],
+  "maxTokensMultiplier": 1,
+  "model": {
+    "type": "none",
+    "folderPath": "",
+    "modelJsonFile": "",
+    "copyToUserData": true,
+    "userDataModelPath": "",
+    "staticImagePath": null,
+    "bottomAlignOffset": 0.5,
+    "gifExpressions": {},
+    "paramMapping": {
+      "angleX": "ParamAngleX",
+      "angleY": "ParamAngleY",
+      "angleZ": "ParamAngleZ",
+      "bodyAngleX": "ParamBodyAngleX",
+      "eyeBallX": "ParamEyeBallX",
+      "eyeBallY": "ParamEyeBallY"
+    },
+    "hasExpressions": true,
+    "expressions": [
+      {
+        "name": "光环",
+        "label": "光环",
+        "file": "光环.exp3.json"
+      },
+      {
+        "name": "兔耳朵",
+        "label": "兔耳朵",
+        "file": "兔耳朵.exp3.json"
+      },
+      {
+        "name": "关耳朵",
+        "label": "关耳朵",
+        "file": "关耳朵.exp3.json"
+      },
+      {
+        "name": "变小",
+        "label": "变小",
+        "file": "变小.exp3.json"
+      },
+      {
+        "name": "变色",
+        "label": "变色",
+        "file": "变色.exp3.json"
+      },
+      {
+        "name": "吓",
+        "label": "吓",
+        "file": "吓.exp3.json"
+      },
+      {
+        "name": "呆毛关闭",
+        "label": "呆毛关闭",
+        "file": "呆毛关闭.exp3.json"
+      },
+      {
+        "name": "呆毛旋转",
+        "label": "呆毛旋转",
+        "file": "呆毛旋转.exp3.json"
+      },
+      {
+        "name": "唱歌",
+        "label": "唱歌",
+        "file": "唱歌.exp3.json"
+      },
+      {
+        "name": "头",
+        "label": "头",
+        "file": "头.exp3.json"
+      },
+      {
+        "name": "害怕",
+        "label": "害怕",
+        "file": "害怕.exp3.json"
+      },
+      {
+        "name": "抱枕",
+        "label": "抱枕",
+        "file": "抱枕.exp3.json"
+      },
+      {
+        "name": "星星眼",
+        "label": "星星眼",
+        "file": "星星眼.exp3.json"
+      },
+      {
+        "name": "棉棒",
+        "label": "棉棒",
+        "file": "棉棒.exp3.json"
+      },
+      {
+        "name": "泪目",
+        "label": "泪目",
+        "file": "泪目.exp3.json"
+      },
+      {
+        "name": "爱心眼",
+        "label": "爱心眼",
+        "file": "爱心眼.exp3.json"
+      },
+      {
+        "name": "生气",
+        "label": "生气",
+        "file": "生气.exp3.json"
+      },
+      {
+        "name": "白色酱蛋糕",
+        "label": "白色酱蛋糕",
+        "file": "白色酱蛋糕.exp3.json"
+      },
+      {
+        "name": "粉色蛋糕",
+        "label": "粉色蛋糕",
+        "file": "粉色蛋糕.exp3.json"
+      },
+      {
+        "name": "翅膀关",
+        "label": "翅膀关",
+        "file": "翅膀关.exp3.json"
+      },
+      {
+        "name": "脸红",
+        "label": "脸红",
+        "file": "脸红.exp3.json"
+      },
+      {
+        "name": "舌头",
+        "label": "舌头",
+        "file": "舌头.exp3.json"
+      },
+      {
+        "name": "钢板",
+        "label": "钢板",
+        "file": "钢板.exp3.json"
+      },
+      {
+        "name": "雾",
+        "label": "雾",
+        "file": "雾.exp3.json"
+      }
+    ],
+    "expressionDurations": {},
+    "defaultExpressionDuration": 5000,
+    "canvasYRatio": 0.6,
+    "motionEmotions": [
+      {
+        "name": "喂布丁",
+        "group": "Default",
+        "index": 0
+      },
+      {
+        "name": "待机动画",
+        "group": "Default",
+        "index": 1
+      },
+      {
+        "name": "睡觉动画",
+        "group": "Default",
+        "index": 2
+      }
+    ],
+    "motionDurations": {},
+    "defaultMotionDuration": 3000
+  },
+  "bubble": {
+    "frameImagePath": ""
+  },
+  "appIcon": null,
+  "enhance": {
+    "enabled": true,
+    "memory": {
+      "enabled": true,
+      "retentionDays": 30
+    },
+    "search": {
+      "enabled": false,
+      "provider": "custom",
+      "customUrl": "",
+      "customApiKey": "",
+      "maxFrequencyMs": 30000,
+      "minFocusSeconds": 10
+    },
+    "knowledge": {
+      "enabled": false,
+      "minIntervalMs": 60000,
+      "maxIntervalMs": 3600000
+    },
+    "vlm": {
+      "enabled": true,
+      "baseIntervalMs": 30000,
+      "maxIntervalMs": 120000,
+      "minFocusSeconds": 10
+    },
+    "knowledgeAcq": {
+      "enabled": false,
+      "minFocusSeconds": 60,
+      "termCooldownMs": 3600000,
+      "maxTermsPerTopic": 15,
+      "maxSearchesPerRequest": 2,
+      "retentionDays": 30
+    }
+  },
+  "allowSimultaneous": true,
+  "activeCharacterId": "",
+  "characters": [],
+  "tts": {
+    "serviceType": "aliyun",
+    "audioMode": "tts",
+    "mimo": {
+      "baseURL": "https://api.xiaomimimo.com/v1",
+      "apiKey": "",
+      "stylePrompt": "小女孩、活泼，可爱、开朗，声音稚嫩",
+      "format": "wav"
+    },
+    "aliyun": {
+      "apiKey": "",
+      "accessKeyId": "",
+      "accessKeySecret": "",
+      "voice": "longxiaoxia"
+    },
+    "local": {
+      "baseURL": "http://localhost:7860",
+      "ttsEndpoint": "/run/tts",
+      "method": "get",
+      "textParam": "text",
+      "speaker": "0",
+      "language": "zh",
+      "responseType": "json",
+      "audioPath": "audio"
+    }
+  },
+  "stt": {
+    "baseURL": "https://api.xiaomimimo.com/v1/audio/transcriptions",
+    "apiKey": "",
+    "model": "mimo-v2.5-asr",
+    "language": "zh"
+  },
+  "uiLanguage": "zh",
+  "translation": {
+    "baseURL": "",
+    "apiKey": "",
+    "modelName": ""
+  },
+  "screenshotInterval": 60,
+  "appMode": "tavern",
+  "firstRun": true,
+  "canvasYRatio": 0.6
+}
