@@ -92,9 +92,9 @@ class AliyunProvider {
         const token = this.config.apiKey;
         
         return new Promise((resolve, reject) => {
-            const ws = new WebSocket('wss://dashscope.aliyuncs.com/api/v1/services/tts/text-to-speech/ws', {
-                headers: { 'Authorization': 'Bearer ' + token }
-            });
+            const ws = new WebSocket(
+                'wss://dashscope.aliyuncs.com/api/v1/text-to-speech/ws?token=' + encodeURIComponent(token)
+            );
             
             const chunks = [];
             let hasResult = false;

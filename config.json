@@ -250,10 +250,8 @@
       "format": "wav"
     },
     "aliyun": {
-      "apiKey": "",
-      "accessKeyId": "",
-      "accessKeySecret": "",
-      "voice": "longxiaoxia"
+      "apiKey": "sk-c8182b2dea099c2ada5e41c83119b0e1",
+      "voice": "zhiyue"
     },
     "local": {
       "baseURL": "http://localhost:7860",
