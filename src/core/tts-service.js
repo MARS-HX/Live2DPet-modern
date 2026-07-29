@@ -94,7 +94,7 @@ class AliyunProvider {
                         target_model: 'qwen3-tts-vd-realtime-2025-12-16',
                         voice_prompt: this.config.voicePrompt || '一个活泼可爱的少女声音，语调轻快，甜美自然。',
                         preview_text: text.slice(0, 100),
-                        preferred_name: 'live2dpet_voice_' + Date.now(),
+                        preferred_name: 'live2dpetvoice',
                         language: 'zh'
                     },
                     parameters: { sample_rate: 24000, response_format: 'wav' }
