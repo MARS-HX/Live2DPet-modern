@@ -68,80 +68,44 @@ class MimoProvider {
 
 class AliyunProvider {
     constructor() {
-        this.config = { apiKey: '', accessKeyId: '', accessKeySecret: '', voice: 'zhiyue' };
+        this.config = { apiKey: '', voice: 'zhiyue' };
     }
-    init(config) {
-        if (!config) return;
-        if (config.apiKey) this.config.apiKey = config.apiKey;
-        if (config.accessKeyId) this.config.accessKeyId = config.accessKeyId;
-        if (config.accessKeySecret) this.config.accessKeySecret = config.accessKeySecret;
-        if (config.voice) this.config.voice = config.voice;
-    }
+    init(c) { if (!c) return; if (c.apiKey) this.config.apiKey = c.apiKey; if (c.voice) this.config.voice = c.voice; }
     
     async synthesize(text) {
-        // 优先用 API Key（Bearer Token）
-        if (this.config.apiKey) return await this._wsTTS(text);
-        if (this.config.accessKeyId) return await this._wsTTS(text);
-        throw new Error('No API Key configured');
-    }
-    
-    async _wsTTS(text) {
+        if (!this.config.apiKey) throw new Error('No API Key configured');
         const WebSocket = require('ws');
         const uuid = require('crypto').randomUUID();
-        const voice = this.config.voice || 'zhiyue';
         const token = this.config.apiKey;
+        const voice = this.config.voice || 'zhiyue';
         
         return new Promise((resolve, reject) => {
-            // 尝试多种 URL + 认证方式
-            const urls = [
-                'wss://dashscope.aliyuncs.com/api/v1/services/tts/text-to-speech/ws?token=' + encodeURIComponent(token),
-                'wss://dashscope.aliyuncs.com/api/v1/services/tts/text-to-speech/ws',
-            ];
-            let ws = null;
-            // 用第一个 URL
-            const urlToUse = urls[0];
-            const wsOptions = urlToUse.includes('?token=') ? {} : { headers: { 'Authorization': 'Bearer ' + token } };
-            ws = new WebSocket(urlToUse, wsOptions);
-            
+            const ws = new WebSocket('wss://dashscope.aliyuncs.com/api/v1/services/tts/text-to-speech/ws', {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
             const chunks = [];
-            let hasResult = false;
-            const timeout = setTimeout(() => { if (!hasResult) { ws.close(); reject(new Error('WebSocket timeout')); } }, 30000);
+            let hasAudio = false;
+            const t = setTimeout(() => { ws.close(); reject(new Error('Timeout')); }, 25000);
             
             ws.on('open', () => {
                 ws.send(JSON.stringify({
                     header: { action: 'run-task', task_id: uuid, streaming: 'out' },
-                    payload: {
-                        model: 'sambert-zhiyue-v1',
-                        task: { text, voice, format: 'wav', sample_rate: 16000 }
-                    }
+                    payload: { model: 'sambert-zhiyue-v1', task: { text, voice, format: 'wav', sample_rate: 48000 } }
                 }));
             });
-            
             ws.on('message', (data, isBinary) => {
-                if (isBinary) {
-                    chunks.push(data);
-                    hasResult = true;
-                } else {
-                    const msg = JSON.parse(data.toString());
-                    if (msg.header?.action === 'task-stopped' || msg.header?.action === 'completed') {
-                        ws.close();
-                    }
+                if (isBinary) { chunks.push(data); hasAudio = true; }
+                else {
+                    const m = JSON.parse(data.toString());
+                    if (['task-stopped', 'completed'].includes(m.header?.action)) ws.close();
                 }
             });
-            
-            ws.on('close', () => {
-                clearTimeout(timeout);
-                if (chunks.length > 0) {
-                    resolve(Buffer.concat(chunks));
-                } else {
-                    reject(new Error('No audio data received'));
-                }
+            ws.on('close', (code, reason) => {
+                clearTimeout(t);
+                if (hasAudio) resolve(Buffer.concat(chunks));
+                else reject(new Error('WS close=' + (code || ws._closeCode) + ' reason=' + (reason || '').toString()));
             });
-            
-            ws.on('error', (err) => {
-                clearTimeout(timeout);
-                reject(new Error('WebSocket: ' + err.message));
-            });
+            ws.on('error', (err) => { clearTimeout(t); reject(err); });
         });
     }
     
