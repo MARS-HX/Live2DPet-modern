@@ -81,32 +81,36 @@ class AliyunProvider {
         if (!this.config.apiKey) throw new Error('No API Key');
         const base = this.config.baseURL;
         
-        // 如果没有音色名，先用描述创建音色
-        let voiceName = this.config.voice;
-        if (!voiceName) {
-            voiceName = await this._createVoice(base, text);
+        try {
+            // 直接合成（使用配置的音色描述）
+            const res = await axios({
+                method: 'post',
+                url: base + '/api/v1/services/audio/tts/synthesis',
+                headers: { 'Authorization': 'Bearer ' + this.config.apiKey, 'Content-Type': 'application/json' },
+                data: {
+                    model: 'qwen3-tts-vd-realtime-2025-12-16',
+                    input: { 
+                        text, 
+                        voice: this.config.voice || '',
+                        voice_prompt: this.config.voicePrompt || '一个活泼可爱的少女声音'
+                    },
+                    parameters: { sample_rate: 24000, response_format: 'wav' }
+                },
+                timeout: 30000
+            });
+            
+            const b64 = res.data?.output?.audio?.data || res.data?.output?.result?.audio_data;
+            if (b64) return Buffer.from(b64, 'base64');
+            
+            throw new Error('No audio: ' + JSON.stringify(res.data).slice(0,300));
+        } catch(e) {
+            if (e.response?.data) {
+                const d = e.response.data;
+                const msg = Buffer.isBuffer(d) ? d.toString() : typeof d === 'object' ? JSON.stringify(d) : String(d);
+                throw new Error('[' + e.response.status + '] ' + msg.slice(0,500));
+            }
+            throw e;
         }
-        
-        // 用音色名合成语音
-        const res = await axios({
-            method: 'post',
-            url: base + '/api/v1/services/audio/tts/synthesis',
-            headers: { 'Authorization': 'Bearer ' + this.config.apiKey, 'Content-Type': 'application/json' },
-            data: {
-                model: 'qwen3-tts-vd-realtime-2025-12-16',
-                input: { text, voice: voiceName },
-                parameters: { sample_rate: 24000, response_format: 'wav' }
-            },
-            timeout: 30000
-        });
-        
-        const b64 = res.data?.output?.audio?.data;
-        if (b64) return Buffer.from(b64, 'base64');
-        
-        const b64alt = res.data?.output?.result?.audio_data;
-        if (b64alt) return Buffer.from(b64alt, 'base64');
-        
-        throw new Error('No audio: ' + JSON.stringify(res.data).slice(0,200));
     }
     
     async _createVoice(base, previewText) {
