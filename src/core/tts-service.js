@@ -75,16 +75,47 @@ class AliyunProvider {
     async synthesize(text) {
         if (!this.config.apiKey) throw new Error('No API Key configured');
         // 使用 HTTP API（Python SDK 底层方式）
-        const res = await axios({
-            method: 'post',
-            url: 'https://dashscope.aliyuncs.com/api/v1/services/tts/text-to-speech/async',
-            headers: { 'Authorization': 'Bearer ' + this.config.apiKey, 'Content-Type': 'application/json' },
-            data: { model: 'sambert-zhiyue-v1', input: { text }, parameters: { voice: this.config.voice || 'zhiyue', format: 'wav' } },
-            timeout: 15000
-        });
-        
-        const taskId = res.data?.output?.task_id;
-        if (!taskId) throw new Error('No task_id: ' + JSON.stringify(res.data).slice(0,200));
+        // 尝试多个端点
+        const endpoints = ['https://dashscope.aliyuncs.com', 'https://bailian.aliyuncs.com'];
+        let lastErr = '';
+        for (const base of endpoints) {
+            try {
+                const res = await axios({
+                    method: 'post',
+                    url: base + '/api/v1/services/tts/text-to-speech/async',
+                    headers: { 'Authorization': 'Bearer ' + this.config.apiKey, 'Content-Type': 'application/json' },
+                    data: { model: 'sambert-zhiyue-v1', input: { text }, parameters: { voice: this.config.voice || 'zhiyue', format: 'wav' } },
+                    timeout: 15000
+                });
+                const taskId = res.data?.output?.task_id;
+                if (!taskId) continue;
+                
+                // 轮询
+                for (let i = 0; i < 60; i++) {
+                    await new Promise(r => setTimeout(r, 1000));
+                    const sr = await axios({
+                        method: 'get', url: base + '/api/v1/tasks/' + taskId,
+                        headers: { 'Authorization': 'Bearer ' + this.config.apiKey }, timeout: 10000
+                    });
+                    const st = sr.data?.output?.task_status;
+                    if (st === 'SUCCEEDED') {
+                        const u = sr.data?.output?.results?.[0]?.audio_url;
+                        if (!u) continue;
+                        const ar = await axios({ method: 'get', url: u, responseType: 'arraybuffer', timeout: 30000 });
+                        return Buffer.from(ar.data);
+                    }
+                    if (st === 'FAILED') {
+                        lastErr = 'Task failed: ' + JSON.stringify(sr.data?.output).slice(0,200);
+                        break;
+                    }
+                }
+            } catch(e) {
+                if (e.response?.status === 404) { lastErr = '404'; continue; }
+                if (e.response?.status === 401) { lastErr = '401 - API Key rejected'; continue; }
+                throw e;
+            }
+        }
+        throw new Error(lastErr || 'All endpoints failed');
         
         // 轮询结果
         for (let i = 0; i < 60; i++) {
@@ -92,7 +123,7 @@ class AliyunProvider {
             const sr = await axios({
                 method: 'get',
                 url: 'https://dashscope.aliyuncs.com/api/v1/tasks/' + taskId,
-                headers: { 'Authorization': 'Bearer ' + this.config.apiKey },
+                headers: { 'X-DashScope-OpenAPISource': 'CloudSDK' },
                 timeout: 10000
             });
             const st = sr.data?.output?.task_status;
