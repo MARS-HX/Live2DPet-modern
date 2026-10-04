@@ -133,9 +133,19 @@
 
 ## 📦 下载
 
-| 文件 | 说明 |
-|------|------|
-| `Live2DPet.exe` | 便携版，解压即用（附赠 `使用说明.md`） |
+| 文件 | 大小 | 说明 |
+|------|------|------|
+| `Live2DPet-v1.6.0-portable.zip` | 99.6 MB | **推荐**。解压后得到 `Live2DPet.exe` + `使用说明.md` + `config.example.json` |
+| `Live2DPet.exe` | 99.5 MB | 单文件便携版，双击即用 |
 
-> 首次运行会自动打开使用说明。若从源码运行，先 `cp config.example.json config.json` 再填写密钥，
+```
+SHA256 (Live2DPet-v1.6.0-portable.zip)
+871299D2D3B9718CAC0FECC321A449896FD55C5AB170596719F0B3B5F1BCBE41
+```
+
+> ⚠️ **本版本不再内置任何 API Key。** 首次运行请把 `config.example.json` 复制为 `config.json`
+> 并填入自己的密钥，或直接在设置界面里填写。
+>
+> 首次运行会自动打开使用说明。若从源码运行，同样先 `cp config.example.json config.json` 再填写密钥，
 > 参见 [GitHub 仓库](https://github.com/MARS-HX/Live2DPet-modern)。
+
