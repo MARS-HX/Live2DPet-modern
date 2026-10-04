@@ -35,6 +35,46 @@ describe('getDefaultConfig', () => {
             assert.ok(s in config.enhance, `missing enhance.${s}`);
         }
     });
+
+    it('includes the DSH bridge defaults', () => {
+        const dsh = getDefaultConfig().dsh;
+        assert.ok(dsh, 'missing dsh section');
+        assert.strictEqual(dsh.enabled, true);
+        assert.strictEqual(dsh.profile, 'headless');
+        assert.strictEqual(dsh.workspace, '');
+        assert.ok(dsh.timeoutMs > 0);
+        assert.strictEqual(dsh.speakResult, true);
+    });
+
+    it('includes the game companion defaults', () => {
+        const c = getDefaultConfig().companion;
+        assert.ok(c, 'missing companion section');
+        assert.strictEqual(c.enabled, false);
+        assert.strictEqual(c.gameOnly, true);
+        assert.ok(c.commentIntervalMs >= 30000);
+        assert.deepStrictEqual(c.gamePatterns, []);
+        assert.strictEqual(c.voiceInput, true, 'voice input is on by default');
+        assert.strictEqual(c.useScreenshots, true, 'screenshot awareness is on by default');
+    });
+
+    it('includes the Bilibili danmaku defaults', () => {
+        const b = getDefaultConfig().bilibili;
+        assert.ok(b, 'missing bilibili section');
+        assert.strictEqual(b.enabled, false);
+        assert.strictEqual(b.roomId, '');
+        assert.strictEqual(b.mode, 'question');
+        assert.ok(b.replyIntervalMs >= 3000);
+        assert.deepStrictEqual(b.replyTypes, ['danmaku', 'superchat']);
+    });
+
+    it('includes the OBS capture defaults', () => {
+        const c = getDefaultConfig().capture;
+        assert.ok(c, 'missing capture section');
+        assert.strictEqual(c.enabled, false);
+        assert.strictEqual(c.color, '#00FF00');
+        assert.ok(c.width >= 120 && c.height >= 120);
+        assert.ok(c.title);
+    });
 });
 
 describe('getDefaultModelConfig', () => {
@@ -152,6 +192,30 @@ describe('createConfigManager (async)', () => {
         const saved = JSON.parse(files[cfgPath(BASE)]);
         assert.strictEqual(saved.enhance.memory.retentionDays, 7);
         assert.strictEqual(saved.enhance.memory.enabled, true);
+    });
+
+    it('saveConfigFile deep-merges the dsh section', async () => {
+        cm = createConfigManager(mockApp, mockOpts({ [cfgPath(BASE)]: JSON.stringify({ dsh: { enabled: true, profile: 'headless', timeoutMs: 600000 } }) }));
+        await cm.saveConfigFile({ dsh: { workspace: 'E:/code' } });
+        const saved = JSON.parse(files[cfgPath(BASE)]);
+        assert.strictEqual(saved.dsh.workspace, 'E:/code');
+        assert.strictEqual(saved.dsh.profile, 'headless', 'untouched keys survive the merge');
+        assert.strictEqual(saved.dsh.timeoutMs, 600000);
+    });
+
+    it('saveConfigFile deep-merges the companion section', async () => {
+        cm = createConfigManager(mockApp, mockOpts({ [cfgPath(BASE)]: JSON.stringify({ companion: { enabled: true, gameOnly: true } }) }));
+        await cm.saveConfigFile({ companion: { commentIntervalMs: 300000 } });
+        const saved = JSON.parse(files[cfgPath(BASE)]);
+        assert.strictEqual(saved.companion.commentIntervalMs, 300000);
+        assert.strictEqual(saved.companion.enabled, true);
+    });
+
+    it('loadConfigFile fills in missing dsh defaults', async () => {
+        cm = createConfigManager(mockApp, mockOpts({ [cfgPath(BASE)]: JSON.stringify({ dsh: { workspace: 'E:/code' } }) }));
+        const cfg = await cm.loadConfigFile();
+        assert.strictEqual(cfg.dsh.workspace, 'E:/code');
+        assert.strictEqual(cfg.dsh.profile, 'headless', 'default fills the gap');
     });
 
     it('saveConfigFile writes valid JSON', async () => {

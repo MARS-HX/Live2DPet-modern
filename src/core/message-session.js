@@ -28,6 +28,8 @@ class MessageSession {
         this.cancelled = false;
         this.text = null;
         this._audioEndPromise = null;
+        // Live-danmaku replies opt into TTS even when the audio mode is silent.
+        this.forceTts = false;
     }
 
     isActive() {
@@ -47,7 +49,7 @@ class MessageSession {
 
         // Phase 1: Prepare audio + select emotion in parallel
         const [prepared] = await Promise.all([
-            system.prepareAudio(this.text),
+            system.prepareAudio(this.text, this.forceTts),
             this._selectEmotion(system)
         ]);
 
@@ -122,9 +124,10 @@ class MessageSession {
         system.emotionSystem.onAIResponse(this.text);
     }
 
-    static create(text) {
+    static create(text, options = {}) {
         const session = new MessageSession();
         session.text = text;
+        if (options && options.forceTts) session.forceTts = true;
         return session;
     }
 }

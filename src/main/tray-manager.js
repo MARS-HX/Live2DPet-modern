@@ -40,6 +40,12 @@ function createTrayManager(ctx, deps) {
                     ctx.settingsWindow.focus();
                 }
             }},
+            { label: mt('tray.captureWindow'), click: () => {
+                const mgr = ctx.captureWindowManager;
+                if (!mgr) return;
+                if (mgr.isOpen()) mgr.close();
+                else mgr.show({});
+            }},
             { type: 'separator' },
             { label: mt('tray.quit'), click: () => {
                 ctx.isQuitting = true;

@@ -8,7 +8,7 @@ const path = require('path');
 const { encrypt, decrypt } = require('./crypto-utils');
 
 const CURRENT_CONFIG_VERSION = 1;
-const ENCRYPTED_FIELDS = ['apiKey', 'translation.apiKey', 'enhance.search.customApiKey'];
+const ENCRYPTED_FIELDS = ['apiKey', 'translation.apiKey', 'enhance.search.customApiKey', 'bilibili.cookie'];
 
 function getDefaultModelConfig() {
     return {
@@ -53,7 +53,68 @@ function getDefaultConfig() {
             knowledge: { enabled: false, minIntervalMs: 60000, maxIntervalMs: 3600000 },
             vlm: { enabled: false, baseIntervalMs: 15000, maxIntervalMs: 60000, minFocusSeconds: 10 },
             knowledgeAcq: { enabled: false, minFocusSeconds: 60, termCooldownMs: 3600000, maxTermsPerTopic: 15, maxSearchesPerRequest: 2, retentionDays: 30 }
-        }
+        },
+        // DeepSeek Harness bridge: drive `dsh` from the pet.
+        dsh: getDefaultDshConfig(),
+        // Game companion: let the pet watch and accompany gameplay.
+        companion: getDefaultCompanionConfig(),
+        // Bilibili live danmaku: let the pet react to a live room's chat.
+        bilibili: getDefaultBilibiliConfig(),
+        // OBS capture window: an opaque chroma-key surface OBS can actually read.
+        capture: getDefaultCaptureConfig()
+    };
+}
+
+function getDefaultCaptureConfig() {
+    return {
+        enabled: false,
+        color: '#00FF00',          // chroma-key colour to key out in OBS
+        width: 600,
+        height: 800,
+        title: 'Live2DPet Capture'
+    };
+}
+
+function getDefaultBilibiliConfig() {
+    return {
+        enabled: false,
+        roomId: '',               // bare id or a live URL
+        roomTitle: '',
+        mode: 'question',         // all | question | mention | none
+        replyIntervalMs: 15000,   // global pacing between replies
+        userCooldownMs: 60000,    // one viewer cannot monopolise the pet
+        minLength: 2,
+        ignoreList: [],
+        mentions: [],             // names that always get a reply
+        replyTypes: ['danmaku', 'superchat'],
+        floodWindowMs: 8000,      // burst window for identical text
+        floodUserThreshold: 4,    // distinct viewers that make it a flood
+        cookie: '',               // optional SESSDATA/Cookie for a logged-in handshake
+        lastError: null
+    };
+}
+
+function getDefaultDshConfig() {
+    return {
+        enabled: true,
+        profile: 'headless',
+        workspace: '',            // '' = user's home directory
+        timeoutMs: 600000,        // 10 minutes
+        script: '',               // explicit path to dsh lib/bin.js when auto-detect fails
+        extraArgs: [],
+        speakResult: true         // read the final answer through TTS
+    };
+}
+
+function getDefaultCompanionConfig() {
+    return {
+        enabled: false,
+        gameOnly: true,           // only react while a game window is focused
+        commentIntervalMs: 120000,
+        gamePatterns: [],         // extra window-title substrings treated as games
+        offerDshHelp: true,       // allow escalating a stuck moment to DSH
+        useScreenshots: true,     // look at the screen to know what is happening
+        voiceInput: true          // hands-free voice input while accompanying
     };
 }
 
@@ -85,12 +146,14 @@ function createConfigManager(app, options = {}) {
         if (config.apiKey) config.apiKey = _decrypt(config.apiKey);
         if (config.translation?.apiKey) config.translation.apiKey = _decrypt(config.translation.apiKey);
         if (config.enhance?.search?.customApiKey) config.enhance.search.customApiKey = _decrypt(config.enhance.search.customApiKey);
+        if (config.bilibili?.cookie) config.bilibili.cookie = _decrypt(config.bilibili.cookie);
     }
 
     function encryptFields(config) {
         if (config.apiKey) config.apiKey = _encrypt(config.apiKey);
         if (config.translation?.apiKey) config.translation.apiKey = _encrypt(config.translation.apiKey);
         if (config.enhance?.search?.customApiKey) config.enhance.search.customApiKey = _encrypt(config.enhance.search.customApiKey);
+        if (config.bilibili?.cookie) config.bilibili.cookie = _encrypt(config.bilibili.cookie);
     }
 
     const bundledConfigPath = path.join(basePath, 'config.json');
@@ -113,6 +176,10 @@ function createConfigManager(app, options = {}) {
                 model: { ...defaults.model, ...(raw.model || {}), paramMapping: { ...defaults.model.paramMapping, ...((raw.model || {}).paramMapping || {}) } },
                 bubble: { ...defaults.bubble, ...(raw.bubble || {}) },
                 tts: { ...(defaults.tts || {}), ...(raw.tts || {}) },
+                dsh: { ...defaults.dsh, ...(raw.dsh || {}) },
+                companion: { ...defaults.companion, ...(raw.companion || {}) },
+                bilibili: { ...defaults.bilibili, ...(raw.bilibili || {}) },
+                capture: { ...defaults.capture, ...(raw.capture || {}) },
                 enhance: {
                     ...defaults.enhance,
                     ...(raw.enhance || {}),
@@ -145,6 +212,10 @@ function createConfigManager(app, options = {}) {
             if (data.bubble) merged.bubble = { ...existing.bubble, ...data.bubble };
             if (data.tts) merged.tts = { ...(existing.tts || {}), ...data.tts };
             if (data.translation) merged.translation = { ...(existing.translation || {}), ...data.translation };
+            if (data.dsh) merged.dsh = { ...(existing.dsh || {}), ...data.dsh };
+            if (data.companion) merged.companion = { ...(existing.companion || {}), ...data.companion };
+            if (data.bilibili) merged.bilibili = { ...(existing.bilibili || {}), ...data.bilibili };
+            if (data.capture) merged.capture = { ...(existing.capture || {}), ...data.capture };
             if (data.enhance) {
                 merged.enhance = { ...(existing.enhance || {}), ...data.enhance };
                 if (data.enhance.memory) merged.enhance.memory = { ...(existing.enhance?.memory || {}), ...data.enhance.memory };
@@ -167,6 +238,10 @@ module.exports = {
     createConfigManager,
     getDefaultConfig,
     getDefaultModelConfig,
+    getDefaultDshConfig,
+    getDefaultCompanionConfig,
+    getDefaultBilibiliConfig,
+    getDefaultCaptureConfig,
     migrateConfig,
     CURRENT_CONFIG_VERSION
 };

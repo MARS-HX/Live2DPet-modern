@@ -272,10 +272,13 @@ class EmotionSystem {
     _triggerExpressionWithDuration(overrideDuration) {
         if (this.enabledEmotions.length === 0) return;
 
-        // Filter available emotions based on current locks
-        let available = this.enabledEmotions;
+        // Only ever play something this model actually provides: enabledEmotions
+        // may hold stale names from a previous model.
+        let available = this.enabledEmotions.filter(name =>
+            this.emotionItems.some(e => e.name === name)
+        );
         if (this.allowSimultaneous) {
-            available = this.enabledEmotions.filter(name => {
+            available = available.filter(name => {
                 const item = this.emotionItems.find(e => e.name === name);
                 if (item?.type === 'motion') return !this.isPlayingMotion;
                 return !this.isPlayingExpression;
@@ -384,11 +387,38 @@ class EmotionSystem {
         }
     }
 
-    setEnabledEmotions(names) {
-        this.enabledEmotions = names.filter(n =>
-            this.emotionItems.some(e => e.name === n)
-        );
-        if (window.electronAPI && window.electronAPI.saveConfig) {
+    /**
+     * Apply the user's enabled-emotion selection.
+     *
+     * A saved selection only means something for the model it was made against.
+     * After a model swap most saved names no longer exist; keeping just the
+     * survivors would silently leave the pet with a couple of expressions, so a
+     * stale selection re-seeds from the expressions this model actually has.
+     * Persisting only happens when the value really changed, so loading config
+     * never rewrites the user's choice as a side effect.
+     */
+    setEnabledEmotions(names, options = {}) {
+        const { persist = true } = options;
+        const list = Array.isArray(names) ? names : [];
+        const known = this.emotionItems.map(e => e.name);
+        const knownSet = new Set(known);
+        const valid = list.filter(n => knownSet.has(n));
+        const stale = list.length - valid.length;
+
+        if (known.length > 0 && (valid.length === 0 || stale > 0)) {
+            this.enabledEmotions = known.slice();
+            if (stale > 0) {
+                console.warn(`[EmotionSystem] ${stale} saved emotion(s) are not in this model; enabled all ${known.length}`);
+            }
+        } else {
+            this.enabledEmotions = valid;
+        }
+
+        // Compare against the SAVED list: a stale selection must be written back
+        // so the config stops disagreeing with the model on every start.
+        const changed = list.length !== this.enabledEmotions.length
+            || list.some((n, i) => n !== this.enabledEmotions[i]);
+        if (persist && changed && window.electronAPI && window.electronAPI.saveConfig) {
             window.electronAPI.saveConfig({ enabledEmotions: this.enabledEmotions });
         }
     }

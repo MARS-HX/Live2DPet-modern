@@ -2,10 +2,28 @@
  * Unit tests for Desktop Pet Standalone core modules
  * Run with: node --test tests/test-core.js
  */
-const { describe, it, beforeEach } = require('node:test');
+const { describe, it, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
+
+// The describe blocks below eval browser-style classes and mock browser globals
+// (window, document, localStorage, fetch) on `global`. These leaks persist into
+// later describe blocks that run in the same process. In particular, a leftover
+// `global.window = {}` + `global.document` makes axios (required by
+// src/core/tts-service.js) detect a "browser env" and read window.location.href,
+// which is undefined there, crashing every TTSService test. Reset the leaked
+// browser globals after every test so Node-only modules can be loaded safely.
+afterEach(() => {
+    delete global.window;
+    delete global.document;
+    delete global.localStorage;
+    delete global.fetch;
+    delete global.PIXI;
+    delete global.EmotionSystem;
+    delete global.AudioStateMachine;
+    delete global.MessageSession;
+});
 
 // ========== Test: AIChatClient ==========
 
@@ -432,6 +450,49 @@ describe('EmotionSystem', () => {
         ], {}, 5000);
         es.setEnabledEmotions(['脸红', 'invalid', '生气']);
         assert.deepStrictEqual(es.enabledEmotions, ['脸红', '生气']);
+    });
+
+    it('setEnabledEmotions keeps a deliberate subset when every name is valid', () => {
+        const es = new ctx.EmotionSystem({ aiClient: {} });
+        es.configureExpressions([
+            { name: 'a' }, { name: 'b' }, { name: 'c' }
+        ], {}, 5000);
+        es.setEnabledEmotions(['a']);
+        assert.deepStrictEqual(es.enabledEmotions, ['a'], 'a valid subset is respected');
+    });
+
+    it('setEnabledEmotions re-seeds from the model when the saved list is stale', () => {
+        // Simulates swapping to a model whose expressions do not match the
+        // saved selection (the pet used to end up with only the survivors).
+        const es = new ctx.EmotionSystem({ aiClient: {} });
+        es.configureExpressions([{ name: 'a' }, { name: 'b' }, { name: 'c' }], {}, 5000);
+        es.setEnabledEmotions(['a', 'zzz', 'yyy']);
+        assert.deepStrictEqual(es.enabledEmotions, ['a', 'b', 'c'], 're-seeds to every expression the model has');
+    });
+
+    it('setEnabledEmotions re-seeds when nothing in the saved list exists', () => {
+        const es = new ctx.EmotionSystem({ aiClient: {} });
+        es.configureExpressions([{ name: 'a' }, { name: 'b' }], {}, 5000);
+        es.setEnabledEmotions(['nope', 'nada']);
+        assert.deepStrictEqual(es.enabledEmotions, ['a', 'b']);
+    });
+
+    it('never plays an enabled name that the model does not provide', () => {
+        // A stale enabledEmotions entry used to reach the adapter and fail with
+        // "not found in cache".
+        const es = new ctx.EmotionSystem({ aiClient: {} });
+        es.configureExpressions([{ name: 'real' }], {}, 5000);
+        es.enabledEmotions = ['real', 'ghost'];
+        const played = [];
+        es.onEmotionTriggered = (n) => played.push(n);
+        es.allowSimultaneous = true;
+        for (let i = 0; i < 20; i++) {
+            es.isPlayingExpression = false;
+            es.emotionValue = 100;
+            es._triggerExpressionWithDuration(null);
+        }
+        assert.ok(played.length > 0, 'the real expression still plays');
+        assert.ok(!played.includes('ghost'), 'the ghost name is never dispatched');
     });
 
     it('stop resets all state', () => {
@@ -1036,6 +1097,40 @@ describe('MessageSession', () => {
         await s.run({});
         assert.strictEqual(chatShown, false);
     });
+
+    it('create defaults forceTts to false', () => {
+        const s = MessageSession.create('plain');
+        assert.strictEqual(s.forceTts, false);
+    });
+
+    it('create accepts a forceTts option', () => {
+        const s = MessageSession.create('danmaku reply', { forceTts: true });
+        assert.strictEqual(s.forceTts, true);
+    });
+
+    it('run forwards forceTts to prepareAudio', async () => {
+        const s = MessageSession.create('danmaku reply', { forceTts: true });
+        let seenForce = null;
+        global.window.electronAPI = { showPetChat: async () => {}, setTalkingState: () => {} };
+        const mockSystem = {
+            emotionSystem: null,
+            prepareAudio: async (t, forceTts) => { seenForce = forceTts; return null; }
+        };
+        await s.run(mockSystem);
+        assert.strictEqual(seenForce, true, 'forced TTS is passed through for danmaku replies');
+    });
+
+    it('run passes forceTts=false for ordinary messages', async () => {
+        const s = MessageSession.create('normal message');
+        let seenForce = 'unset';
+        global.window.electronAPI = { showPetChat: async () => {}, setTalkingState: () => {} };
+        const mockSystem = {
+            emotionSystem: null,
+            prepareAudio: async (t, forceTts) => { seenForce = forceTts; return null; }
+        };
+        await s.run(mockSystem);
+        assert.strictEqual(seenForce, false);
+    });
 });
 
 // ========== Test: AudioStateMachine ==========
@@ -1158,19 +1253,39 @@ describe('TTSService', () => {
     it('should instantiate with defaults', () => {
         const tts = new TTSService();
         assert.strictEqual(tts.initialized, false);
-        assert.strictEqual(tts.styleId, 0);
-        assert.strictEqual(tts.speedScale, 1.0);
+        assert.strictEqual(tts.serviceType, 'mimo');
         assert.strictEqual(tts.degraded, false);
         assert.strictEqual(tts.failCount, 0);
+        assert.strictEqual(tts.maxFails, 3);
+        assert.ok(tts.providers.mimo);
+        assert.ok(tts.providers.aliyun);
+        assert.ok(tts.providers.local);
     });
 
-    it('setConfig updates parameters', () => {
+    it('defaults to the Mimo model that actually returns audio', () => {
         const tts = new TTSService();
-        tts.setConfig({ styleId: 3, speedScale: 1.5, pitchScale: 0.1, volumeScale: 0.8 });
-        assert.strictEqual(tts.styleId, 3);
-        assert.strictEqual(tts.speedScale, 1.5);
-        assert.strictEqual(tts.pitchScale, 0.1);
-        assert.strictEqual(tts.volumeScale, 0.8);
+        // `-voicedesign` answers HTTP 200 with no audio and trips the breaker.
+        assert.strictEqual(tts.providers.mimo.config.model, 'mimo-v2.5-tts');
+    });
+
+    it('lets the Mimo model be overridden from config', () => {
+        const tts = new TTSService();
+        tts.setConfig({ mimo: { model: 'mimo-v2.5-tts-custom' } });
+        assert.strictEqual(tts.providers.mimo.config.model, 'mimo-v2.5-tts-custom');
+    });
+
+    it('applies the Mimo model through init()', () => {
+        const tts = new TTSService();
+        tts.init({ serviceType: 'mimo', mimo: { model: 'mimo-v2.5-tts', apiKey: 'k' } });
+        assert.strictEqual(tts.providers.mimo.config.model, 'mimo-v2.5-tts');
+        assert.strictEqual(tts.providers.mimo.isConfigured(), true);
+    });
+
+    it('setConfig switches backend', () => {
+        const tts = new TTSService();
+        tts.setConfig({ serviceType: 'aliyun' });
+        assert.strictEqual(tts.serviceType, 'aliyun');
+        assert.strictEqual(tts.activeProvider, tts.providers.aliyun);
     });
 
     it('isAvailable returns false when not initialized', () => {
@@ -1178,14 +1293,14 @@ describe('TTSService', () => {
         assert.strictEqual(tts.isAvailable(), false);
     });
 
-    it('synthesize returns null when not initialized', () => {
+    it('synthesize resolves null when not initialized', async () => {
         const tts = new TTSService();
-        assert.strictEqual(tts.synthesize('test'), null);
+        assert.strictEqual(await tts.synthesize('test'), null);
     });
 
-    it('tts returns null when not initialized', () => {
+    it('tts resolves null when not initialized', async () => {
         const tts = new TTSService();
-        assert.strictEqual(tts.tts('test'), null);
+        assert.strictEqual(await tts.tts('test'), null);
     });
 
     it('circuit breaker degrades after maxFails', () => {
@@ -1222,88 +1337,41 @@ describe('TTSService', () => {
         assert.strictEqual(tts.failCount, 0);
     });
 
-    it('init returns false with invalid path', () => {
+    it('init marks the service initialized', () => {
         const tts = new TTSService();
-        const result = tts.init('/nonexistent/path');
-        assert.strictEqual(result, false);
-        assert.strictEqual(tts.initialized, false);
+        const result = tts.init({ serviceType: 'aliyun' });
+        assert.strictEqual(result, true);
+        assert.strictEqual(tts.initialized, true);
+        assert.strictEqual(tts.serviceType, 'aliyun');
+    });
+
+    it('does not degrade when provider is not configured', async () => {
+        const tts = new TTSService();
+        // Aliyun 后端已初始化，但 apiKey 为空 => 未配置
+        tts.init({ serviceType: 'aliyun' });
+        const result = await tts.tts('hello');
+        assert.strictEqual(result, null);
+        assert.strictEqual(tts.degraded, false);
+        assert.strictEqual(tts.failCount, 0);
+    });
+
+    it('uses exponential backoff for retry interval', () => {
+        const tts = new TTSService();
+        tts.maxFails = 1;
+        tts._onFailure();
+        assert.strictEqual(tts.degraded, true);
+        assert.strictEqual(tts._retryMs, tts.retryInterval * 2);
+        tts.degraded = false;
+        tts._onFailure();
+        assert.strictEqual(tts._retryMs, Math.min(tts.retryInterval * 4, tts._maxRetryMs));
     });
 
     it('destroy resets state', () => {
         const tts = new TTSService();
         tts.initialized = true;
-        tts.modelLoaded = true;
         tts.destroy();
         assert.strictEqual(tts.initialized, false);
-        assert.strictEqual(tts.modelLoaded, false);
     });
 });
 
-// ========== Test: TranslationService ==========
 
-describe('TranslationService', () => {
-    let TranslationService;
-
-    beforeEach(() => {
-        ({ TranslationService } = require('../src/core/translation-service'));
-    });
-
-    it('should instantiate with defaults', () => {
-        const ts = new TranslationService();
-        assert.strictEqual(ts.enabled, true);
-        assert.strictEqual(ts.cache.size, 0);
-        assert.strictEqual(ts.isConfigured(), false);
-    });
-
-    it('configure sets API params', () => {
-        const ts = new TranslationService();
-        ts.configure({ apiKey: 'key', baseURL: 'http://test', modelName: 'gpt' });
-        assert.strictEqual(ts.isConfigured(), true);
-    });
-
-    it('translate returns original when not configured', async () => {
-        const ts = new TranslationService();
-        const result = await ts.translate('你好');
-        assert.strictEqual(result, '你好');
-    });
-
-    it('translate returns original when disabled', async () => {
-        const ts = new TranslationService();
-        ts.configure({ apiKey: 'k', baseURL: 'http://t', modelName: 'm' });
-        ts.enabled = false;
-        const result = await ts.translate('你好');
-        assert.strictEqual(result, '你好');
-    });
-
-    it('translate returns empty for empty input', async () => {
-        const ts = new TranslationService();
-        const result = await ts.translate('');
-        assert.strictEqual(result, '');
-    });
-
-    it('cache returns cached value', async () => {
-        const ts = new TranslationService();
-        ts.configure({ apiKey: 'k', baseURL: 'http://t', modelName: 'm' });
-        ts.cache.set('你好', 'こんにちは');
-        const result = await ts.translate('你好');
-        assert.strictEqual(result, 'こんにちは');
-    });
-
-    it('_cacheSet evicts oldest when full', () => {
-        const ts = new TranslationService();
-        ts.cacheMaxSize = 2;
-        ts._cacheSet('a', '1');
-        ts._cacheSet('b', '2');
-        ts._cacheSet('c', '3');
-        assert.strictEqual(ts.cache.size, 2);
-        assert.strictEqual(ts.cache.has('a'), false);
-        assert.strictEqual(ts.cache.get('c'), '3');
-    });
-
-    it('clearCache empties the cache', () => {
-        const ts = new TranslationService();
-        ts.cache.set('a', '1');
-        ts.clearCache();
-        assert.strictEqual(ts.cache.size, 0);
-    });
-});

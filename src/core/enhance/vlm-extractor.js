@@ -36,6 +36,11 @@ class VLMExtractor {
             { maxSize: 1, scale: 0.25, entries: [] }
         ];
 
+        // 截图变化检测 — 用低分辨率感知哈希判断内容是否变了
+        this._lastHash = null;          // 上一张截图的感知哈希
+        this._changeThreshold = 0.15;   // 变化超过 15% 才算新画面
+        this._hashDownscale = 8;        // 哈希缩到 8x8 做比较
+
         // Independent capture timer
         this._captureTimerMs = 5000;
         this._captureTimer = null;
@@ -70,6 +75,57 @@ class VLMExtractor {
         if (config.kfSelectIntervalMs) this._kfSelectIntervalMs = config.kfSelectIntervalMs;
         if (config.kfCandidateMax) this._kfCandidateMax = config.kfCandidateMax;
         if (config.kfSelectedMax) this._kfSelectedMax = config.kfSelectedMax;
+        if (config.changeThreshold !== undefined) this._changeThreshold = Math.max(0.02, Math.min(0.5, config.changeThreshold));
+    }
+
+    /**
+     * 感知哈希（pHash）— 比较两张截图是否相似
+     * 返回 [0, 1] 的差异度，0=完全一样，1=完全不同
+     */
+    async _computeHash(base64) {
+        if (typeof document === 'undefined') return null;
+        try {
+            return await new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => {
+                    const s = this._hashDownscale;
+                    const canvas = document.createElement('canvas');
+                    canvas.width = s; canvas.height = s;
+                    const ctx = canvas.getContext('2d');
+                    // 灰度化：只取亮度信息
+                    ctx.drawImage(img, 0, 0, s, s);
+                    const data = ctx.getImageData(0, 0, s, s).data;
+                    canvas.width = canvas.height = 0;
+                    // 计算平均亮度
+                    let total = 0;
+                    for (let i = 0; i < data.length; i += 4) {
+                        total += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+                    }
+                    const avg = total / (s * s);
+                    // 生成二进制哈希（大于平均=1，小于=0）
+                    let hash = '';
+                    for (let i = 0; i < data.length; i += 4) {
+                        const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+                        hash += lum >= avg ? '1' : '0';
+                    }
+                    resolve(hash);
+                };
+                img.onerror = () => resolve(null);
+                img.src = 'data:image/jpeg;base64,' + base64;
+            });
+        } catch { return null; }
+    }
+
+    /**
+     * 比较两个感知哈希的汉明距离，返回差异比例 [0, 1]
+     */
+    _hashDistance(h1, h2) {
+        if (!h1 || !h2 || h1.length !== h2.length) return 1;
+        let diff = 0;
+        for (let i = 0; i < h1.length; i++) {
+            if (h1[i] !== h2[i]) diff++;
+        }
+        return diff / h1.length;
     }
 
     setContextGatherer(fn) { this._contextGatherer = fn; }
@@ -147,6 +203,24 @@ class VLMExtractor {
      */
     async pushScreenshot(base64, title) {
         if (!base64 || !this._captureActive) return;
+
+        // ---- 感知哈希变化检测 ----
+        const hash = await this._computeHash(base64);
+        if (hash && this._lastHash) {
+            const distance = this._hashDistance(hash, this._lastHash);
+            if (distance < this._changeThreshold) {
+                // 画面变化太小，跳过（只更新时间戳，保留旧图）
+                // 但 L0 的已有 entry 更新一下时间，保持时效性
+                if (this._mipmapLevels[0].entries.length > 0) {
+                    this._mipmapLevels[0].entries[0].timestamp = Date.now();
+                }
+                this._lastHash = hash; // 更新哈希，防止同样的图反复判断
+                return;
+            }
+        }
+        this._lastHash = hash;
+        // ---- 变化检测结束 ----
+
         const entry = { base64, timestamp: Date.now(), title };
         const L0 = this._mipmapLevels[0];
         L0.entries.push(entry);
@@ -378,16 +452,16 @@ class VLMExtractor {
 
     /**
      * LLM keyframe selection — picks representative frames from candidates.
-     * Candidates are sent at 256px to save tokens.
+     * Candidates are sent at 512px for better accuracy.
      */
     async _maybeSelectKeyframes() {
         if (this._selectingKf) return;
         this._selectingKf = true;
         try {
-            // Downsample candidates to 256px for the selection call
+            // Downsample candidates to 512px for the selection call
             const candidates = [];
             for (const c of this._kfCandidates) {
-                const small = await this._downsampleBase64(c.base64, 256);
+                const small = await this._downsampleBase64(c.base64, 512);
                 candidates.push({ ...c, base64Small: small });
             }
 

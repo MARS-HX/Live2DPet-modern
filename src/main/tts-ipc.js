@@ -1,7 +1,7 @@
 /**
  * TTS IPC — TTS synthesis using Mimo API only.
  * Removed VOICEVOX and translation, ensuring Chinese output.
- * Uses voicedesign model for optimal voice quality.
+ * The Mimo model name is user-configurable (default `mimo-v2.5-tts`).
  */
 
 /**
@@ -89,7 +89,7 @@ function registerTTSIPC(ctx, ipcMain, deps) {
             options.mimo = {
                 baseURL: mimo.baseURL || 'https://api.xiaomimimo.com/v1',
                 apiKey: mimo.apiKey || '',
-                model: mimo.model || 'mimo-v2.5-tts-voicedesign',
+                model: mimo.model || 'mimo-v2.5-tts',
                 format: mimo.format || 'wav',
                 stylePrompt: mimo.stylePrompt || '自然、流畅、清晰的中文语音'
             };
@@ -160,7 +160,8 @@ function registerTTSIPC(ctx, ipcMain, deps) {
             degraded: svc?.degraded || false,
             degradedAt: svc?.degradedAt || 0,
             retryInterval: svc?.retryInterval || 60000,
-            serviceType: 'mimo',
+            serviceType: svc?.serviceType || 'mimo',
+            configured: svc?.isConfigured ? svc.isConfigured() : false,
             translationConfigured: false
         };
     });
@@ -176,14 +177,10 @@ function registerTTSIPC(ctx, ipcMain, deps) {
             failCount: svc?.failCount || 0,
             maxFails: svc?.maxFails || 3,
             retryInterval: svc?.retryInterval || 60000,
-            config: svc?.mimoConfig ? {
-                hasBaseURL: !!svc.mimoConfig.baseURL,
-                hasApiKey: !!svc.mimoConfig.apiKey,
-                model: svc.mimoConfig.model,
-                format: svc.mimoConfig.format,
-            } : null,
+            serviceType: svc?.serviceType || 'unknown',
+            configured: svc?.isConfigured ? svc.isConfigured() : false,
             isAvailable: svc?.isAvailable ? svc.isAvailable() : false,
-            circuitBroken: svc?.degraded ? (Date.now() - (svc.degradedAt || 0) < (svc.retryInterval || 60000)) : false
+            circuitBroken: svc?.degraded ? (Date.now() - (svc.degradedAt || 0) < (svc?.retryInterval || 60000)) : false
         };
     });
 

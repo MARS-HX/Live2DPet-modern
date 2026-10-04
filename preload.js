@@ -75,6 +75,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ttsSynthesize: (text) => ipcRenderer.invoke('tts-synthesize', text),
     ttsGetStatus: () => ipcRenderer.invoke('tts-get-status'),
     ttsRestart: () => ipcRenderer.invoke('tts-restart'),
+    ttsReinit: (config) => ipcRenderer.invoke('tts-reinit', config),
     ttsDiagnose: () => ipcRenderer.invoke('tts-diagnose'),
     sttWindows: () => ipcRenderer.invoke('stt-windows'),
     appRelaunch: () => ipcRenderer.invoke('app-relaunch'),
@@ -88,6 +89,31 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Default audio (Phase 2)
     generateDefaultAudio: (phrases, styleId) => ipcRenderer.invoke('generate-default-audio', phrases, styleId),
     loadDefaultAudio: () => ipcRenderer.invoke('load-default-audio'),
+
+    // ========== DeepSeek Harness (DSH) 桥接 ==========
+    // 让桌宠直接驱动 dsh：一次性 headless 任务，最终答复经 stdout 返回。
+    dshStatus: () => ipcRenderer.invoke('dsh-status'),
+    dshProbe: () => ipcRenderer.invoke('dsh-probe'),
+    dshConfig: (patch) => ipcRenderer.invoke('dsh-config', patch),
+    dshRun: (task) => ipcRenderer.invoke('dsh-run', task),
+    dshCancel: () => ipcRenderer.invoke('dsh-cancel'),
+    onDshOutput: (cb) => ipcRenderer.on('dsh://output', (e, data) => cb(data)),
+    onDshDone: (cb) => ipcRenderer.on('dsh://done', (e, data) => cb(data)),
+
+    // ========== 哔哩哔哩直播间弹幕 ==========
+    // 读取直播间弹幕，让桌宠对弹幕作出回应。
+    biliStatus: () => ipcRenderer.invoke('bili-status'),
+    biliStart: (roomId) => ipcRenderer.invoke('bili-start', roomId),
+    biliStop: () => ipcRenderer.invoke('bili-stop'),
+    biliConfig: (patch) => ipcRenderer.invoke('bili-config', patch),
+    onBiliDanmaku: (cb) => ipcRenderer.on('bili://danmaku', (e, data) => cb(data)),
+    onBiliStatus: (cb) => ipcRenderer.on('bili://status', (e, data) => cb(data)),
+
+    // ========== OBS 采集窗口 ==========
+    // 透明窗口 OBS 抓出来是全黑，这里提供一个带抠像底色的不透明窗口。
+    captureStatus: () => ipcRenderer.invoke('capture-status'),
+    captureToggle: () => ipcRenderer.invoke('capture-toggle'),
+    captureConfig: (patch) => ipcRenderer.invoke('capture-config', patch),
 
     // ========== 语音识别 (ASR) - 云端/旧版 ==========
     TRANSCRIBE_AUDIO: (audioBuffer, mimeType) => ipcRenderer.invoke('TRANSCRIBE_AUDIO', audioBuffer, mimeType),

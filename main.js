@@ -24,6 +24,9 @@ const { registerTTSIPC } = require('./src/main/tts-ipc');
 const { registerEnhanceIPC } = require('./src/main/enhance-ipc');
 const { registerDefaultAudioIPC } = require('./src/main/default-audio-ipc');
 const { registerModelImport } = require('./src/main/model-import');
+const { registerDshIPC } = require('./src/main/dsh-ipc');
+const { registerBilibiliIPC } = require('./src/main/bilibili-ipc');
+const { registerCaptureIPC } = require('./src/main/capture-ipc');
 const { createPathUtils } = require('./src/utils/path-utils');
 const { TTSService } = require('./src/core/tts-service');
 
@@ -50,6 +53,15 @@ registerTTSIPC(ctx, ipcMain, { configManager, fs, path, app, mt });
 registerEnhanceIPC(ctx, ipcMain, { app, fs, https, http });
 registerDefaultAudioIPC(ctx, ipcMain, { app, fs, path, configManager });
 registerModelImport(ctx, ipcMain, { app, fs, path, dialog, mt, configManager, BrowserWindow });
+
+// ========== DeepSeek Harness bridge ==========
+registerDshIPC(ctx, ipcMain, { configManager, app, path });
+
+// ========== Bilibili live danmaku ==========
+registerBilibiliIPC(ctx, ipcMain, { configManager, app });
+
+// ========== OBS capture window ==========
+registerCaptureIPC(ctx, ipcMain, { configManager, app, path, basePath, BrowserWindow });
 
 // ========== 麦克风权限（保留，但 STT 未使用） ==========
 ipcMain.handle('REQUEST_MICROPHONE_ACCESS', async () => {
@@ -120,16 +132,6 @@ app.whenReady().then(async () => {
 
         const initSuccess = ctx.ttsService.init(options);
         console.log(`[TTS] ${initSuccess ? 'Initialized' : 'Not available'} with backend: ${serviceType}`);
-        
-        if (config.apiKey && ctx.translationService) {
-            try {
-                ctx.translationService.configure({
-                    apiKey: config.apiKey,
-                    baseURL: config.baseURL || 'https://openrouter.ai/api/v1',
-                    modelName: config.modelName || 'x-ai/grok-4.1-fast'
-                });
-            } catch(e) {}
-        }
     });
 });
 

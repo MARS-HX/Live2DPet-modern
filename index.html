@@ -95,7 +95,7 @@
         }
         textarea:focus { border-color: #7c4dff; }
         .tabs {
-            display: flex; gap: 4px; margin-bottom: 16px;
+            display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 16px;
             background: var(--tab-bg);
             border-radius: 12px;
             padding: 4px;
@@ -103,11 +103,12 @@
             -webkit-backdrop-filter: blur(10px);
         }
         .tab-btn {
-            flex: 1; padding: 8px 0; border: none;
+            flex: 1 1 30%; padding: 8px 4px; border: none;
             background: transparent; cursor: pointer;
             font-size: 13px; transition: all 0.3s;
             color: var(--text-secondary);
             border-radius: 8px;
+            white-space: nowrap;
         }
         .tab-btn:hover { background: rgba(124,77,255,0.08); }
         .tab-btn.active { background: var(--tab-active); color: white; }
@@ -206,6 +207,7 @@
         <button class="tab-btn" data-tab="tts" data-i18n="tab.tts">TTS & Voice</button>
         <button class="tab-btn" data-tab="prompt" data-i18n="tab.prompt">Prompt</button>
         <button class="tab-btn" data-tab="tavern" data-i18n="tab.tavern">Tavern</button>
+        <button class="tab-btn" data-tab="integrations" data-i18n="tab.integrations">Integrations</button>
     </div>
 
     <!-- Settings Tab -->
@@ -275,6 +277,119 @@
     </div>
     <div class="card" style="text-align:center;font-size:12px;color:#888;padding:8px">
         <span data-i18n="footer.text">Open source & free. Get the latest version on</span> <a href="#" id="link-github" style="color:#58a6ff" data-i18n="footer.star">GitHub</a>
+    </div>
+    </div>
+
+    <!-- Integrations Tab (DSH / companion / live danmaku) -->
+    <div id="tab-integrations" class="tab-content">
+    <div class="card">
+        <h2 data-i18n="dsh.title">DeepSeek Harness (DSH)</h2>
+        <p class="model-info" data-i18n="dsh.desc">Drive <code>dsh</code> straight from the pet. Each task runs one headless session in the workspace below and the final answer comes back to the chat window.</p>
+        <div class="status" id="dsh-status-line"></div>
+        <label style="display:inline-flex;align-items:center;gap:6px;">
+            <input type="checkbox" id="dsh-enabled">
+            <span data-i18n="dsh.enabled">Enable DSH bridge</span>
+        </label>
+        <label data-i18n="dsh.profile">Profile</label>
+        <input type="text" id="dsh-profile" placeholder="headless">
+        <label data-i18n="dsh.workspace">Workspace directory</label>
+        <input type="text" id="dsh-workspace" data-i18n-ph="dsh.workspace.ph" placeholder="(empty = home directory)">
+        <label data-i18n="dsh.script">Launcher script (optional)</label>
+        <input type="text" id="dsh-script" data-i18n-ph="dsh.script.ph" placeholder="auto-detected">
+        <label data-i18n="dsh.timeout">Timeout (seconds)</label>
+        <input type="number" id="dsh-timeout" min="30" step="30">
+        <label style="display:inline-flex;align-items:center;gap:6px;">
+            <input type="checkbox" id="dsh-speak">
+            <span data-i18n="dsh.speak">Read the answer aloud with TTS</span>
+        </label>
+        <div class="btn-row">
+            <button class="btn btn-primary" id="btn-save-dsh" data-i18n="dsh.save">Save DSH settings</button>
+            <button class="btn btn-secondary" id="btn-probe-dsh" data-i18n="dsh.probe">Check environment</button>
+        </div>
+        <div class="status" id="dsh-save-status"></div>
+    </div>
+    <div class="card">
+        <h2 data-i18n="companion.title">Game Companion</h2>
+        <p class="model-info" data-i18n="companion.desc">While you play, the pet glances at the screen now and then and says something. Turn on DSH help to let it look things up when you are stuck.</p>
+        <label style="display:inline-flex;align-items:center;gap:6px;">
+            <input type="checkbox" id="companion-enabled">
+            <span data-i18n="companion.enabled">Enable game companion</span>
+        </label>
+        <label style="display:inline-flex;align-items:center;gap:6px;">
+            <input type="checkbox" id="companion-game-only">
+            <span data-i18n="companion.gameOnly">Only react to game windows</span>
+        </label>
+        <label style="display:inline-flex;align-items:center;gap:6px;">
+            <input type="checkbox" id="companion-voice">
+            <span data-i18n="companion.voiceInput">Voice input on by default (talk hands-free)</span>
+        </label>
+        <label style="display:inline-flex;align-items:center;gap:6px;">
+            <input type="checkbox" id="companion-screenshots">
+            <span data-i18n="companion.screenshots">Look at the screen to know what you are doing</span>
+        </label>
+        <label data-i18n="companion.interval">Comment interval (seconds)</label>
+        <input type="number" id="companion-interval" min="30" step="10">
+        <label data-i18n="companion.patterns">Extra game keywords (comma separated)</label>
+        <input type="text" id="companion-patterns" data-i18n-ph="companion.patterns.ph" placeholder="e.g. Genshin, steam, 原神">
+        <label style="display:inline-flex;align-items:center;gap:6px;">
+            <input type="checkbox" id="companion-dsh">
+            <span data-i18n="companion.offerDsh">Let the pet offer DSH help when you are stuck</span>
+        </label>
+        <button class="btn btn-primary" id="btn-save-companion" data-i18n="companion.save">Save companion settings</button>
+        <div class="status" id="companion-save-status"></div>
+    </div>
+    <div class="card">
+        <h2 data-i18n="capture.title">OBS Capture Window</h2>
+        <p class="model-info" data-i18n="capture.desc">A transparent window shows up BLACK in OBS's Window Capture. This opens a second, opaque window filled with a chroma-key colour, so OBS can capture the pet and key the background out.</p>
+        <div class="status" id="capture-status-line"></div>
+        <label data-i18n="capture.color">Chroma key colour</label>
+        <input type="color" id="capture-color" value="#00ff00" style="width:100%;height:36px;padding:2px;">
+        <label data-i18n="capture.size">Window size (width × height)</label>
+        <div style="display:flex;gap:8px;">
+            <input type="number" id="capture-width" min="120" max="4096" step="10" placeholder="600">
+            <input type="number" id="capture-height" min="120" max="4096" step="10" placeholder="800">
+        </div>
+        <div class="btn-row">
+            <button class="btn btn-primary" id="btn-capture-save" data-i18n="capture.save">Save</button>
+            <button class="btn btn-secondary" id="btn-capture-toggle" data-i18n="capture.open">Open capture window</button>
+        </div>
+        <div class="status" id="capture-save-status"></div>
+        <p class="model-info" style="font-size:11px;color:#888;" data-i18n="capture.howto">In OBS: Sources → + → Window Capture → pick “Live2DPet Capture”, then right-click it → Filters → + → Chroma Key. If the preview is black, set the capture method to “Windows 10 (1903 and up)”.</p>
+    </div>
+    <div class="card">
+        <h2 data-i18n="bili.title">Bilibili Live Danmaku</h2>
+        <p class="model-info" data-i18n="bili.desc">Connect the pet to a live room and let it react to the chat. It reads danmaku over Bilibili's own WebSocket — no login required.</p>
+        <div class="status" id="bili-status-line"></div>
+        <label style="display:inline-flex;align-items:center;gap:6px;">
+            <input type="checkbox" id="bili-enabled">
+            <span data-i18n="bili.enabled">Enable live danmaku</span>
+        </label>
+        <label data-i18n="bili.room">Room ID or URL</label>
+        <input type="text" id="bili-room" data-i18n-ph="bili.room.ph" placeholder="e.g. 5440 or https://live.bilibili.com/5440">
+        <label data-i18n="bili.cookie">SESSDATA / Cookie (optional, may receive more danmaku)</label>
+        <input type="password" id="bili-cookie" data-i18n-ph="bili.cookie.ph" placeholder="SESSDATA=...">
+        <p class="model-info" style="font-size:11px;color:#888;margin-top:-2px;" data-i18n="bili.cookieHint">Stored encrypted on this machine only. Leave empty for an anonymous connection. If a room delivers nothing, logging in sometimes helps.</p>
+        <label data-i18n="bili.mode">When to reply</label>
+        <select id="bili-mode">
+            <option value="question" data-i18n="bili.mode.question">Only questions / when called by name</option>
+            <option value="mention" data-i18n="bili.mode.mention">Only when called by name</option>
+            <option value="all" data-i18n="bili.mode.all">Any readable danmaku</option>
+            <option value="none" data-i18n="bili.mode.none">Never</option>
+        </select>
+        <label data-i18n="bili.mentions">Names that always get a reply (comma separated)</label>
+        <input type="text" id="bili-mentions" data-i18n-ph="bili.mentions.ph" placeholder="e.g. 猫猫, Mimi">
+        <label data-i18n="bili.interval">Minimum seconds between replies</label>
+        <input type="number" id="bili-interval" min="3" step="1">
+        <label data-i18n="bili.cooldown">Per-viewer cooldown (seconds)</label>
+        <input type="number" id="bili-cooldown" min="0" step="10">
+        <label data-i18n="bili.ignore">Ignore danmaku containing (comma separated)</label>
+        <input type="text" id="bili-ignore" data-i18n-ph="bili.ignore.ph" placeholder="e.g. 广告, spam">
+        <div class="btn-row">
+            <button class="btn btn-primary" id="btn-save-bili" data-i18n="bili.save">Save danmaku settings</button>
+            <button class="btn btn-secondary" id="btn-connect-bili" data-i18n="bili.connect">Connect</button>
+            <button class="btn btn-secondary" id="btn-disconnect-bili" data-i18n="bili.disconnect">Disconnect</button>
+        </div>
+        <div class="status" id="bili-save-status"></div>
     </div>
     </div>
 
@@ -421,6 +536,9 @@
                 <input type="password" id="mimo-api-key">
                 <label data-i18n="tts.stylePrompt">Style Prompt (optional)</label>
                 <textarea id="mimo-style-prompt" rows="3" placeholder="自然、流畅、清晰的中文语音"></textarea>
+                <label data-i18n="tts.model">Model</label>
+                <input type="text" id="mimo-model" placeholder="mimo-v2.5-tts">
+                <p class="model-info" style="font-size:11px;color:#888;margin-top:-2px;" data-i18n="tts.modelHint">Use mimo-v2.5-tts. Other names (e.g. -voicedesign) answer 200 with no audio and will trip the TTS circuit breaker.</p>
                 <label data-i18n="tts.format">Audio Format</label>
                 <select id="mimo-format">
                     <option value="wav">WAV</option>
@@ -577,6 +695,19 @@
     </div>
     </div>
 
+    <script>
+        // Forward renderer console to the main process so the settings window's
+        // logs (pet system, danmaku, capture) show up in the app's stdout too.
+        if (window.electronAPI?.rendererLog) {
+            for (const level of ['log', 'warn', 'error']) {
+                const orig = console[level];
+                console[level] = (...args) => {
+                    orig.apply(console, args);
+                    try { window.electronAPI.rendererLog(level, args.map(String)); } catch {}
+                };
+            }
+        }
+    </script>
     <script src="src/i18n/locales.js"></script>
     <script src="src/core/ai-chat.js"></script>
     <!-- 酒馆预设配置 -->
@@ -642,6 +773,8 @@
     <script src="src/core/enhance/vlm-extractor.js"></script>
     <script src="src/core/enhance/knowledge-acquisition.js"></script>
     <script src="src/core/enhance/enhancement-orchestrator.js"></script>
+    <script src="src/core/game-companion.js"></script>
+    <script src="src/core/live-companion.js"></script>
     <script src="src/core/desktop-pet-system.js"></script>
     <script src="src/renderer/settings-ui.js"></script>
 </body>

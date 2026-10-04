@@ -8,3 +8,8 @@ manyread/short/
 manyread/user/
 nul
 build.bat
+
+# Local user data — contains API keys / cookies. Never commit these.
+# config.example.json is the shareable template; copy it to config.json.
+config.json
+enhance-data.json

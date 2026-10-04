@@ -105,6 +105,26 @@ body.dark #chat-input::placeholder { color:#888; }
 #btn-mic:hover { background:rgba(255,255,255,1); }
 #btn-mic.listening { background:#ff4444; color:white; animation:pulse 1s infinite; }
 @keyframes pulse { 0%{transform:scale(1)} 50%{transform:scale(1.1)} 100%{transform:scale(1)} }
+
+/* ===== DSH (DeepSeek Harness) 模式 ===== */
+#dsh-toggle.active { background:#7c4dff; color:white; border-color:#7c4dff; }
+.dsh-console {
+    margin:6px 10px; padding:8px 10px; border-radius:10px;
+    background:rgba(124,77,255,0.07); border:1px solid rgba(124,77,255,0.25);
+    font-family:Consolas,Monaco,monospace; font-size:11px; line-height:1.5;
+    white-space:pre-wrap; word-break:break-word; max-height:190px; overflow-y:auto;
+}
+.dsh-console .dsh-head { font-weight:bold; color:#7c4dff; margin-bottom:4px; font-family:inherit; }
+.dsh-console .dsh-body { color:#444; }
+.dsh-console.done-ok { border-color:rgba(46,125,50,0.4); background:rgba(46,125,50,0.08); }
+.dsh-console.done-err { border-color:rgba(198,40,40,0.4); background:rgba(198,40,40,0.08); }
+.dsh-answer {
+    margin:4px 10px 8px; padding:9px 12px; border-radius:10px;
+    background:#fff; border-left:3px solid #7c4dff; font-size:13px; line-height:1.6;
+    white-space:pre-wrap; word-break:break-word; max-height:320px; overflow-y:auto;
+}
+body.dark .dsh-console .dsh-body { color:#ddd; }
+body.dark .dsh-answer { background:#2a2a35; }
 </style>
 </head>
 <body>
@@ -120,6 +140,8 @@ body.dark #chat-input::placeholder { color:#888; }
                 <option value="">预设</option>
             </select>
             <span id="tts-toggle-tavern" style="display:none;font-size:12px;cursor:pointer;padding:2px 6px;border-radius:4px;background:#e8f5e9;color:#2e7d32;" title="点击切换TTS">🔊</span>
+            <button class="ctrl-btn" id="dsh-toggle" title="DSH 模式：把任务交给 DeepSeek Harness 执行">🛠</button>
+            <button class="ctrl-btn" id="btn-dsh-stop" title="停止 DSH 任务" style="display:none;">■</button>
             <button class="ctrl-btn" id="btn-close" title="关闭">✕</button>
         </span>
     </div>
@@ -503,11 +525,113 @@ function stopVoice() {
     mic.textContent = '🎤';
 }
 
+// ===== DSH (DeepSeek Harness) 模式：把任务交给 dsh 执行，结果回到桌宠 =====
+let dshActive = false;
+let dshRunning = false;
+let dshConsoleEl = null;
+
+function refreshDshUi() {
+    const btn = document.getElementById('dsh-toggle');
+    if (btn) btn.classList.toggle('active', dshActive);
+    const stop = document.getElementById('btn-dsh-stop');
+    if (stop) stop.style.display = dshRunning ? '' : 'none';
+    const input = document.getElementById('chat-input');
+    if (input) {
+        input.placeholder = dshActive
+            ? (dshRunning ? 'DSH 正在执行…' : '交给 DSH，例如：帮我看看这个报错')
+            : '说点什么...';
+    }
+}
+
+document.getElementById('dsh-toggle')?.addEventListener('click', async () => {
+    if (dshRunning) return;
+    try {
+        const status = await window.electronAPI?.dshStatus?.();
+        if (status && status.available === false) {
+            appendMessage('ai', '⚠️ 没找到 dsh 启动器。请先安装：npm i -g @deepseek-ai/dsh；或在 设置 → DSH 里指定启动脚本路径。');
+        }
+    } catch (e) {}
+    dshActive = !dshActive;
+    refreshDshUi();
+    if (dshActive) {
+        appendMessage('ai', '🛠 DSH 模式已开启：把任务发给我，我交给 DeepSeek Harness 执行，完成后把结果念给你听。');
+    }
+});
+
+document.getElementById('btn-dsh-stop')?.addEventListener('click', async () => {
+    try { await window.electronAPI?.dshCancel?.(); } catch (e) {}
+});
+
+// 流式输出：DSH 的 stdout/stderr 实时写进控制台气泡
+window.electronAPI?.onDshOutput?.((payload) => {
+    if (!dshConsoleEl) return;
+    const body = dshConsoleEl.querySelector('.dsh-body');
+    if (!body) return;
+    body.textContent += payload.text || '';
+    dshConsoleEl.scrollTop = dshConsoleEl.scrollHeight;
+    const container = document.getElementById('chat-messages');
+    if (container) container.scrollTop = container.scrollHeight;
+});
+
+async function runDshTask(task) {
+    dshRunning = true;
+    refreshDshUi();
+    const container = document.getElementById('chat-messages');
+
+    dshConsoleEl = document.createElement('div');
+    dshConsoleEl.className = 'dsh-console';
+    dshConsoleEl.innerHTML = '<div class="dsh-head">🛠 DSH 执行中…</div><div class="dsh-body"></div>';
+    container.appendChild(dshConsoleEl);
+    container.scrollTop = container.scrollHeight;
+
+    let result;
+    try {
+        result = await window.electronAPI.dshRun(task);
+    } catch (e) {
+        result = { ok: false, error: e.message };
+    }
+
+    dshRunning = false;
+    if (dshConsoleEl) {
+        dshConsoleEl.classList.add(result && result.ok ? 'done-ok' : 'done-err');
+        const head = dshConsoleEl.querySelector('.dsh-head');
+        if (head) {
+            head.textContent = result && result.ok
+                ? '✅ DSH 完成（' + Math.round((result.durationMs || 0) / 1000) + 's）'
+                : '❌ DSH 失败：' + ((result && result.error) || 'unknown');
+        }
+        if (!dshConsoleEl.querySelector('.dsh-body').textContent.trim()) {
+            dshConsoleEl.querySelector('.dsh-body').textContent = '(无过程输出)';
+        }
+    }
+    refreshDshUi();
+
+    if (result && result.ok && result.answer) {
+        const answerEl = document.createElement('div');
+        answerEl.className = 'dsh-answer';
+        answerEl.textContent = result.answer;
+        container.appendChild(answerEl);
+        container.scrollTop = container.scrollHeight;
+        // 让桌宠把结论念出来
+        if (window.electronAPI?.ttsSynthesize) {
+            try {
+                const t = await window.electronAPI.ttsSynthesize(result.answer.slice(0, 300));
+                if (t && t.success) new Audio('data:audio/wav;base64,' + t.wav).play().catch(() => {});
+            } catch (e) {}
+        }
+    } else if (result && result.error) {
+        appendMessage('ai', '😅 DSH 没能完成：' + result.error);
+    }
+}
+
 async function sendMessage(text) {
     if (!text || !text.trim()) return;
     const msg = text.trim();
     document.getElementById('chat-input').value = '';
     appendMessage('user', msg);
+
+    // DSH 模式：交给 DeepSeek Harness 执行
+    if (dshActive) { await runDshTask(msg); return; }
 
     if (chatMode === 'tavern' && diaryStore) {
         diaryStore.history.push({ role: 'user', content: msg, timestamp: Date.now() });

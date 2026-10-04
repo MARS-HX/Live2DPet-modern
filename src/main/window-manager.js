@@ -22,11 +22,20 @@ function registerWindowHandlers(ctx, ipcMain, deps) {
     // deps: { BrowserWindow, path, screen, updateTrayMenu, basePath }
 
     function createSettingsWindow() {
+        // A second call must reuse the existing window: the close handler hides
+        // it rather than destroying it, so re-creating would leak an orphan.
+        if (ctx.settingsWindow && !ctx.settingsWindow.isDestroyed()) {
+            ctx.settingsWindow.show();
+            ctx.settingsWindow.focus();
+            return ctx.settingsWindow;
+        }
         ctx.settingsWindow = new deps.BrowserWindow({
-            width: 480,
-            height: 600,
+            width: 520,
+            height: 780,
+            minWidth: 420,
+            minHeight: 480,
             frame: true,
-            resizable: false,
+            resizable: true,
             webPreferences: {
                 nodeIntegration: false,
                 contextIsolation: true,
@@ -43,6 +52,7 @@ function registerWindowHandlers(ctx, ipcMain, deps) {
         });
         ctx.settingsWindow.on('closed', () => { ctx.settingsWindow = null; });
         applyCSP(ctx.settingsWindow);
+        return ctx.settingsWindow;
     }
 
     // ========== Pet Window ==========

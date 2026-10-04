@@ -40,6 +40,19 @@ class DesktopPetSystem {
         this.enhancer = null;
         this._showLayout = false; // desktop layout in prompt, default off
 
+        // Game companion + hands-free voice input
+        this.gameCompanion = null;
+        this.companionVoiceInput = true;      // default on while accompanying
+        this.companionVoiceLang = 'zh-CN';
+        this._companionVoiceActive = false;
+        this._companionRecognition = null;
+
+        // Live danmaku delivery + on-demand pet start
+        this._danmakuQueue = [];
+        this._drainingDanmaku = false;
+        this._autoStarting = false;
+        this._suppressAutoStart = false;
+
         // 截图频率控制
         this.screenshotInterval = 0;  // 0=跟随检测间隔
         this.lastScreenshotTime = 0;
@@ -72,7 +85,46 @@ class DesktopPetSystem {
                 this.screenshotInterval = config.screenshotInterval;
                 console.log('[DesktopPetSystem] Screenshot interval:', this.screenshotInterval, 's');
             }
+            // 游戏陪伴：让宠物在用户玩游戏时陪伴吐槽
+            if (typeof GameCompanion !== 'undefined') {
+                const comp = config.companion || {};
+                this.gameCompanion = new GameCompanion({
+                    config: comp,
+                    lang: config.uiLanguage === 'zh' ? 'zh' : (config.uiLanguage || 'en')
+                });
+                // 语音输入默认打开（用户可关）
+                this.companionVoiceInput = comp.voiceInput !== false;
+                this.companionVoiceLang = config.uiLanguage === 'zh' ? 'zh-CN'
+                    : config.uiLanguage === 'ja' ? 'ja-JP' : 'en-US';
+                console.log('[DesktopPetSystem] Game companion:',
+                    this.gameCompanion.enabled ? 'on' : 'off',
+                    '| screenshots:', this.gameCompanion.useScreenshots ? 'on' : 'off',
+                    '| voice input:', this.companionVoiceInput ? 'on' : 'off');
+            }
+            // 哔哩哔哩直播间弹幕：让宠物回应弹幕
+            if (typeof LiveCompanion !== 'undefined') {
+                const bili = config.bilibili || {};
+                this.liveCompanion = new LiveCompanion({
+                    config: bili,
+                    lang: config.uiLanguage === 'zh' ? 'zh' : (config.uiLanguage || 'en')
+                });
+                this.biliRoomTitle = bili.roomTitle || '';
+                console.log('[DesktopPetSystem] Live companion:',
+                    this.liveCompanion.enabled ? 'on' : 'off', '| mode:', this.liveCompanion.mode);
+            }
         } catch (e) {}
+
+        // 订阅直播间弹幕
+        if (window.electronAPI?.onBiliDanmaku) {
+            window.electronAPI.onBiliDanmaku((msg) => this._onDanmaku(msg));
+        }
+        if (window.electronAPI?.onBiliStatus) {
+            window.electronAPI.onBiliStatus((st) => {
+                if (st?.roomId && !this.biliRoomTitle && st.realRoomId) {
+                    this.biliRoomTitle = 'room ' + st.realRoomId;
+                }
+            });
+        }
 
         // Enhancement orchestrator (only if master toggle enabled)
         if (typeof EnhancementOrchestrator !== 'undefined') {
@@ -105,7 +157,7 @@ class DesktopPetSystem {
         if (window.electronAPI.ttsGetStatus) {
             try {
                 const status = await window.electronAPI.ttsGetStatus();
-                this.audioStateMachine.setTTSAvailable(status.initialized && !status.degraded);
+                this.audioStateMachine.setTTSAvailable(status.initialized && !status.degraded && status.configured);
             } catch (e) {}
         }
         // Load default audio clips
@@ -127,6 +179,7 @@ class DesktopPetSystem {
 
     async start() {
         if (this.isActive) return;
+        this._suppressAutoStart = false;   // an explicit start clears a manual stop
         if (!this.aiClient.isConfigured()) {
             console.warn('[DesktopPetSystem] API not configured');
             if (window.electronAPI) window.electronAPI.showSettings();
@@ -148,10 +201,14 @@ class DesktopPetSystem {
     }
 
     async stop() {
+        // Remember that the user stopped the pet on purpose, so incoming danmaku
+        // do not immediately bring it back.
+        this._suppressAutoStart = true;
         if (!this.isActive) return;
         this.stopDetection();
         this.stopFocusTimer();
         this.stopCurrentAudio();
+        this._stopCompanionVoice();
         this.emotionSystem.stop();
         if (this.enhancer) await this.enhancer.stop();
         try {
@@ -211,7 +268,290 @@ class DesktopPetSystem {
             if (!this.focusTracker[windowKey]) this.focusTracker[windowKey] = 0;
             this.focusTracker[windowKey] += 1;
             if (this.enhancer) this.enhancer.onFocusTick(windowKey);
+            this._companionTick({
+                title: result.data.title || '',
+                process: result.data.owner.name || ''
+            });
         } catch (e) {}
+    }
+
+    /**
+     * Game-companion tick — runs inside the 1s focus loop but only actually
+     * speaks when the companion says a moment is due (default: every 2 minutes).
+     */
+    _companionTick(win) {
+        if (!this.gameCompanion) return;
+        if (!this.gameCompanion.enabled) {
+            // Companion turned off → make sure hands-free voice is off too.
+            if (this._companionVoiceActive) this._stopCompanionVoice();
+            return;
+        }
+        this._syncCompanionVoice();
+
+        // Never interrupt something the pet is already saying.
+        if (this.isPlayingMessage || this.pendingMessage) return;
+        this.gameCompanion.noteFocus(win);
+        if (!this.gameCompanion.shouldComment(win)) return;
+        this._companionMoment(win).catch(() => {});
+    }
+
+    /**
+     * Grab one frame for the companion. Returns base64 JPEG or null.
+     * Prefers the focused window so the remark is about the game itself.
+     */
+    async _companionScreenshot(win) {
+        if (!window.electronAPI) return null;
+        const title = win && win.title ? win.title : '';
+        try {
+            if (title && window.electronAPI.getScreenCaptureHQ) {
+                const hq = await window.electronAPI.getScreenCaptureHQ(title);
+                if (hq?.success && hq.data) return hq.data;
+            }
+            if (window.electronAPI.getScreenCapture) {
+                const cap = await window.electronAPI.getScreenCapture();
+                if (cap?.success && cap.data) return cap.data;
+            }
+        } catch (e) {
+            console.log('[DEBUG:companion] screenshot failed:', e.message);
+        }
+        return null;
+    }
+
+    /** Ask the pet's model for a short in-game remark and queue it. */
+    async _companionMoment(win) {
+        if (this.isRequesting || !this.aiClient?.isConfigured?.()) return;
+        const instruction = this.gameCompanion.buildGamePrompt(win);
+        try {
+            const content = [{ type: 'text', text: instruction }];
+            // 默认根据截屏了解用户在干什么
+            if (this.gameCompanion.useScreenshots) {
+                const shot = await this._companionScreenshot(win);
+                if (shot) {
+                    content.push({ type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + shot } });
+                }
+            }
+            const response = await this.aiClient.callAPI([
+                { role: 'system', content: this.systemPrompt + '\n\n' + this.buildDynamicContext() },
+                { role: 'user', content }
+            ]);
+            if (!response || !this.isActive) return;
+            this.pendingMessage = response;
+            this._processQueue();
+        } catch (e) {
+            console.log('[DEBUG:companion] failed:', e.message);
+        }
+    }
+
+    // ========== 游戏陪伴：免提语音输入 ==========
+
+    /** Start/stop hands-free voice listening to match the companion config. */
+    _syncCompanionVoice() {
+        const wanted = !!(this.gameCompanion && this.gameCompanion.enabled && this.companionVoiceInput);
+        if (wanted && !this._companionVoiceActive) this._startCompanionVoice();
+        else if (!wanted && this._companionVoiceActive) this._stopCompanionVoice();
+    }
+
+    _startCompanionVoice() {
+        const SR = (typeof window !== 'undefined') && (window.SpeechRecognition || window.webkitSpeechRecognition);
+        if (!SR) {
+            console.log('[CompanionVoice] Web Speech API unavailable; voice input stays off');
+            this._companionVoiceActive = false;
+            return;
+        }
+        try {
+            const rec = new SR();
+            rec.lang = this.companionVoiceLang || 'zh-CN';
+            rec.continuous = true;
+            rec.interimResults = false;
+            rec.maxAlternatives = 1;
+            rec.onresult = (event) => {
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    if (!event.results[i].isFinal) continue;
+                    const text = (event.results[i][0]?.transcript || '').trim();
+                    if (text) this._handleCompanionUtterance(text).catch(() => {});
+                }
+            };
+            rec.onerror = (e) => {
+                // 'not-allowed' means the user denied the mic: stop retrying loudly.
+                if (e && (e.error === 'not-allowed' || e.error === 'service-not-allowed')) {
+                    console.log('[CompanionVoice] microphone denied; disabling voice input');
+                    this.companionVoiceInput = false;
+                    this._companionVoiceActive = false;
+                    this._companionRecognition = null;
+                }
+            };
+            rec.onend = () => {
+                // Continuous mode still ends on silence in Chromium; restart while wanted.
+                if (this._companionVoiceActive && this.isActive) {
+                    try { rec.start(); } catch (e) {}
+                }
+            };
+            rec.start();
+            this._companionRecognition = rec;
+            this._companionVoiceActive = true;
+            console.log('[CompanionVoice] listening');
+        } catch (e) {
+            console.log('[CompanionVoice] failed to start:', e.message);
+            this._companionVoiceActive = false;
+        }
+    }
+
+    _stopCompanionVoice() {
+        this._companionVoiceActive = false;
+        if (this._companionRecognition) {
+            try { this._companionRecognition.onend = null; this._companionRecognition.abort(); } catch (e) {}
+            this._companionRecognition = null;
+        }
+        console.log('[CompanionVoice] stopped');
+    }
+
+    /** Answer something the user said out loud, using the current screen. */
+    async _handleCompanionUtterance(text) {
+        if (!this.isActive || this.isRequesting || !this.aiClient?.isConfigured?.()) return;
+        let win = { title: '', process: '' };
+        try {
+            const active = await window.electronAPI?.getActiveWindow?.();
+            if (active?.success && active.data) {
+                win = { title: active.data.title || '', process: active.data.owner?.name || '' };
+            }
+        } catch (e) {}
+
+        const instruction = this.gameCompanion.buildVoiceReplyPrompt(text, win);
+        if (!instruction) return;
+        this.isRequesting = true;
+        try {
+            const content = [{ type: 'text', text: instruction }];
+            if (this.gameCompanion.useScreenshots) {
+                const shot = await this._companionScreenshot(win);
+                if (shot) content.push({ type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + shot } });
+            }
+            const response = await this.aiClient.callAPI([
+                { role: 'system', content: this.systemPrompt + '\n\n' + this.buildDynamicContext() },
+                { role: 'user', content }
+            ]);
+            if (!response || !this.isActive) return;
+            this.pendingMessage = response;
+            this._processQueue();
+        } catch (e) {
+            console.log('[DEBUG:companion] voice reply failed:', e.message);
+        } finally {
+            this.isRequesting = false;
+        }
+    }
+
+    // ========== 哔哩哔哩直播间弹幕 ==========
+
+    /**
+     * A danmaku arrived. Rate limiting happens here; delivery is queued so a
+     * busy pet does not silently swallow the message (the live chat is a
+     * firehose and the pet's own loop occupies it most of the time).
+     */
+    _onDanmaku(msg) {
+        if (!this.liveCompanion) {
+            console.log('[Danmaku] ignored: live companion not initialised');
+            return;
+        }
+        if (!this.liveCompanion.enabled) {
+            console.log('[Danmaku] ignored: live danmaku is disabled in settings');
+            return;
+        }
+        // A danmaku reply needs a running pet (it owns the bubble and the voice).
+        // Live chat is exactly the case where the user is not watching this app,
+        // so bring the pet up instead of silently dropping everything.
+        if (!this.isActive) {
+            this._ensureRunningForDanmaku();
+            return;
+        }
+        if (!this.liveCompanion.shouldReply(msg)) {
+            console.log(`[Danmaku] skipped by policy (mode=${this.liveCompanion.mode}): ${msg.text}`);
+            return;
+        }
+        if (!this._danmakuQueue) this._danmakuQueue = [];
+        this._danmakuQueue.push(msg);
+        // Keep the queue fresh: older danmaku stop mattering quickly.
+        while (this._danmakuQueue.length > 3) this._danmakuQueue.shift();
+        console.log(`[Danmaku] queued (${this._danmakuQueue.length} waiting): ${msg.text}`);
+        this._drainDanmakuQueue();
+    }
+
+    /** Start the pet on demand so an incoming danmaku actually gets answered. */
+    async _ensureRunningForDanmaku() {
+        if (this._autoStarting || this.isActive) return;
+        if (this._suppressAutoStart) {
+            console.log('[Danmaku] ignored: the pet was stopped manually');
+            return;
+        }
+        if (!this.aiClient?.isConfigured?.()) {
+            console.log('[Danmaku] cannot answer: the AI model is not configured');
+            return;
+        }
+        this._autoStarting = true;
+        console.log('[Danmaku] pet is not running — starting it so danmaku can be answered');
+        try {
+            await this.start();
+            console.log('[Danmaku] pet started:', this.isActive ? 'yes' : 'no');
+        } catch (e) {
+            console.log('[Danmaku] auto-start failed:', e.message);
+        } finally {
+            this._autoStarting = false;
+        }
+    }
+
+    /** Deliver queued danmaku replies one at a time, waiting for a free pet. */
+    async _drainDanmakuQueue() {
+        if (this._drainingDanmaku) return;
+        this._drainingDanmaku = true;
+        try {
+            while (this._danmakuQueue && this._danmakuQueue.length > 0 && this.isActive) {
+                if (this.isRequesting || this.isPlayingMessage || this.pendingMessage) {
+                    await new Promise((r) => setTimeout(r, 1500));
+                    continue;
+                }
+                const msg = this._danmakuQueue.shift();
+                console.log(`[Danmaku] answering <${msg.user}>: ${msg.text}`);
+                await this._replyToDanmaku(msg);
+            }
+        } finally {
+            this._drainingDanmaku = false;
+        }
+    }
+
+    /** Re-read the live-danmaku settings (the settings panel calls this on save). */
+    async reloadLiveCompanionConfig() {
+        try {
+            const cfg = (await window.electronAPI.loadConfig()).bilibili || {};
+            if (this.liveCompanion) {
+                this.liveCompanion.configure(cfg);
+            } else if (typeof LiveCompanion !== 'undefined') {
+                this.liveCompanion = new LiveCompanion({ config: cfg, lang: 'zh' });
+            }
+            this.biliRoomTitle = cfg.roomTitle || this.biliRoomTitle || '';
+            console.log('[DesktopPetSystem] Live companion reloaded:',
+                this.liveCompanion?.enabled ? 'on' : 'off', '| mode:', this.liveCompanion?.mode);
+        } catch (e) {
+            console.log('[DEBUG:danmaku] reload failed:', e.message);
+        }
+    }
+
+    /** Answer one danmaku through the pet's normal bubble + TTS path. */
+    async _replyToDanmaku(msg) {
+        if (!this.aiClient?.isConfigured?.()) return;
+        const instruction = this.liveCompanion.buildReplyPrompt(msg, { roomTitle: this.biliRoomTitle });
+        this.isRequesting = true;
+        try {
+            const response = await this.aiClient.callAPI([
+                { role: 'system', content: this.systemPrompt + '\n\n' + this.buildDynamicContext() },
+                { role: 'user', content: instruction }
+            ]);
+            if (!response || !this.isActive) return;
+            // 弹幕回应必须走软件内的 TTS 语音合成（即使音频模式是静音）
+            this.pendingMessage = { text: response, forceTts: true };
+            this._processQueue();
+        } catch (e) {
+            console.log('[DEBUG:danmaku] reply failed:', e.message);
+        } finally {
+            this.isRequesting = false;
+        }
     }
 
     // ========== Knowledge Layer ==========
@@ -345,14 +685,19 @@ class DesktopPetSystem {
      * Prepare audio for playback (synthesis/loading phase).
      * Returns { play: () => Promise<void>, duration: number } or null.
      */
-    async prepareAudio(text) {
-        if (!this.audioStateMachine) return null;
-        const mode = this.audioStateMachine.effectiveMode;
+    async prepareAudio(text, forceTts = false) {
+        if (!this.audioStateMachine && !forceTts) return null;
+        // forceTts: live-danmaku replies must be voiced even if the user set the
+        // audio mode to silent or default clips.
+        const mode = forceTts ? 'tts' : this.audioStateMachine.effectiveMode;
 
         if (mode === 'tts' && window.electronAPI?.ttsSynthesize) {
             try {
                 const result = await window.electronAPI.ttsSynthesize(text);
-                if (!result.success || !result.wav) return null;
+                if (!result.success || !result.wav) {
+                    if (forceTts) console.warn('[TTS] Forced synthesis failed:', result.error || 'no audio');
+                    return null;
+                }
 
                 const audio = this._createAudioFromBase64(result.wav);
                 // Wait for metadata to get duration
@@ -598,15 +943,19 @@ class DesktopPetSystem {
         this.isPlayingMessage = true;
 
         while (this.pendingMessage && this.isActive) {
-            // Grab latest and clear the slot
-            const text = this.pendingMessage;
+            // Grab latest and clear the slot. A plain string is the common case;
+            // an object carries per-message options (e.g. forceTts).
+            const raw = this.pendingMessage;
             this.pendingMessage = null;
+            const text = typeof raw === 'string' ? raw : (raw && raw.text);
+            const forceTts = !!(raw && typeof raw === 'object' && raw.forceTts);
+            if (!text) continue;
 
             if (this.currentSession) this.currentSession.cancel();
             this.stopCurrentAudio();
             if (this.emotionSystem) this.emotionSystem.forceRevert();
 
-            const session = MessageSession.create(text);
+            const session = MessageSession.create(text, { forceTts });
             this.currentSession = session;
             await session.run(this);
 
@@ -716,7 +1065,7 @@ class DesktopPetSystem {
                     try {
                         const result = await window.electronAPI.getScreenCaptureHQ(appName);
                         if (result?.success && result.data) {
-                            screenshots.push({ base64: result.data, timestamp: Date.now() });
+                            screenshots.push({ base64: result.data, timestamp: Date.now(), source: 'fresh' });
                             this.lastScreenshotTime = now;
                         }
                     } catch (e) { console.log('[DEBUG:ss] HQ exception:', e.message); }
@@ -725,7 +1074,7 @@ class DesktopPetSystem {
                     try {
                         const result = await window.electronAPI.getScreenCapture();
                         if (result?.success && result.data) {
-                            screenshots.push({ base64: result.data, timestamp: Date.now() });
+                            screenshots.push({ base64: result.data, timestamp: Date.now(), source: 'fresh' });
                             this.lastScreenshotTime = now;
                         }
                     } catch (e) { console.log('[DEBUG:ss] exception:', e.message); }
@@ -735,6 +1084,17 @@ class DesktopPetSystem {
                 const older = this.enhancer.vlmExtractor.getScreenshotsForMainAI(1);
                 for (const entry of older) {
                     if (screenshots.length > 0 && entry.base64 === screenshots[0].base64) continue;
+                    // 简单的 base64 头部分析：如果前 1000 字符差不多，大概率内容重复
+                    if (screenshots.length > 0) {
+                        const a = screenshots[0].base64.slice(0, 1000);
+                        const b = entry.base64.slice(0, 1000);
+                        let diff = 0;
+                        for (let i = 0; i < a.length && i < b.length; i++) {
+                            if (a[i] !== b[i]) diff++;
+                        }
+                        // 前 1000 字符差异 < 5% → 视为重复，跳过
+                        if (diff / Math.min(a.length, b.length) < 0.05) continue;
+                    }
                     if (screenshots.length < maxScreenshots) screenshots.push(entry);
                 }
             }

@@ -13,7 +13,10 @@ class MimoProvider {
         this.config = {
             baseURL: 'https://api.xiaomimimo.com/v1',
             apiKey: '',
-            model: 'mimo-v2.5-tts-voicedesign',
+            // `mimo-v2.5-tts` is the model that actually returns audio. The
+            // `-voicedesign` variant answers HTTP 200 with an aborted/empty body,
+            // which made every synthesis fail and tripped the circuit breaker.
+            model: 'mimo-v2.5-tts',
             format: 'wav',
             stylePrompt: '自然、流畅、清晰的中文语音'
         };
@@ -28,6 +31,8 @@ class MimoProvider {
             if (config.stylePrompt !== undefined) this.config.stylePrompt = config.stylePrompt;
         }
     }
+
+    isConfigured() { return !!this.config.apiKey; }
 
     async synthesize(text) {
         const { baseURL, apiKey, model, format, stylePrompt } = this.config;
@@ -51,7 +56,11 @@ class MimoProvider {
             timeout: 30000
         });
         const b64 = res.data?.choices?.[0]?.message?.audio?.data;
-        if (!b64) throw new Error("No audio data");
+        if (!b64) {
+            // A 200 with no audio usually means the model name is not a TTS model.
+            const shape = JSON.stringify(res.data ?? null).slice(0, 200);
+            throw new Error(`no audio data (model=${model}) response=${shape}`);
+        }
         return Buffer.from(b64, 'base64');
     }
 
@@ -77,6 +86,8 @@ class AliyunProvider {
         if (c.voicePrompt) this.config.voicePrompt = c.voicePrompt;
         if (c.baseURL) this.config.baseURL = c.baseURL;
     }
+
+    isConfigured() { return !!this.config.apiKey; }
     
     async synthesize(text) {
         if (!this.config.apiKey) throw new Error('No API Key');
@@ -154,6 +165,8 @@ class AliyunProvider {
         }
     }
 
+    isConfigured() { return true; }
+
     async synthesize(text) {
         const { baseURL, ttsEndpoint, method, params, textParam, responseType, audioPath } = this.config;
         
@@ -225,6 +238,10 @@ class TTSService {
         this.degraded = false;
         this.degradedAt = 0;
         this.retryInterval = 60000;
+        // 指数退避：首次熔断等待 retryInterval，之后每次熔断等待时间翻倍，达到 _maxRetryMs 封顶
+        this._retryMs = this.retryInterval;
+        this._maxRetryMs = 600000; // 10 分钟上限
+        this._warnedNotConfigured = false;
     }
 
     init(options = {}) {
@@ -238,6 +255,12 @@ class TTSService {
             if (aliyun) this.providers.aliyun.init(aliyun);
             if (local) this.providers.local.init(local);
             this.initialized = true;
+            // 重新初始化后重置熔断与告警状态，避免旧配置残留导致误熔断
+            this.degraded = false;
+            this.failCount = 0;
+            this.degradedAt = 0;
+            this._retryMs = this.retryInterval;
+            this._warnedNotConfigured = false;
             console.log(`[TTS] Initialized with backend: ${this.serviceType}`);
             return true;
         } catch (err) {
@@ -253,6 +276,14 @@ class TTSService {
 
     async tts(text, styleId) {
         if (!this.initialized || this._checkDegraded()) return null;
+        // 配置未完成（如缺少 API Key）属于永久性错误，不计入熔断，否则会因一次误配反复熔断
+        if (!this.isConfigured()) {
+            if (!this._warnedNotConfigured) {
+                this._warnedNotConfigured = true;
+                console.log(`[TTS] ${this.serviceType} not configured (missing API key), skipping synthesis`);
+            }
+            return null;
+        }
         try {
             const buf = await this.activeProvider.synthesize(text);
             this._onSuccess();
@@ -273,27 +304,34 @@ class TTSService {
         if (config.aliyun) this.providers.aliyun.init(config.aliyun);
     }
 
-    isAvailable() { return this.initialized && !this._checkDegraded(); }
+    isAvailable() { return this.initialized && !this._checkDegraded() && this.isConfigured(); }
+
+    isConfigured() {
+        const p = this.activeProvider;
+        return !!(p && typeof p.isConfigured === 'function' ? p.isConfigured() : true);
+    }
 
     getMetas() { return this.activeProvider.getMetas(); }
     getAvailableVvms() { return []; }
 
     _checkDegraded() {
         if (!this.degraded) return false;
-        if (Date.now() - this.degradedAt >= this.retryInterval) {
+        if (Date.now() - this.degradedAt >= this._retryMs) {
             this.degraded = false;
             this.failCount = 0;
             return false;
         }
         return true;
     }
-    _onSuccess() { this.failCount = 0; }
+    _onSuccess() { this.failCount = 0; this._retryMs = this.retryInterval; }
     _onFailure() {
         this.failCount++;
-        if (this.failCount >= this.maxFails) {
+        if (this.failCount >= this.maxFails && !this.degraded) {
             console.warn(`[TTS] Circuit breaker: degraded after ${this.failCount} failures`);
             this.degraded = true;
             this.degradedAt = Date.now();
+            // 指数退避：下一次恢复检查的等待时间翻倍（封顶 _maxRetryMs），降低对故障后端的高频重试
+            this._retryMs = Math.min(this._retryMs * 2, this._maxRetryMs);
         }
     }
 

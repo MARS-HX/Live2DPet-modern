@@ -741,12 +741,26 @@ document.getElementById('btn-save-expressions').addEventListener('click', async 
     const defaultMotionDurSec = parseFloat(document.getElementById('default-motion-duration').value);
     const defaultMotionDur = defaultMotionDurSec > 0 ? Math.round(defaultMotionDurSec * 1000) : 3000;
 
-    currentModelConfig.expressions = expressions;
-    currentModelConfig.expressionDurations = expressionDurations;
+    // The editor can render empty lists (e.g. before a model is scanned). Saving
+    // that emptiness would silently wipe a good configuration, so an empty form
+    // keeps whatever was already stored.
+    const hadMotions = Array.isArray(currentModelConfig.motionEmotions) && currentModelConfig.motionEmotions.length > 0;
+    if (motionEmotions.length === 0 && hadMotions) {
+        console.warn('[SettingsUI] motion list is empty; keeping the saved motions instead of wiping them');
+    } else {
+        currentModelConfig.motionEmotions = motionEmotions;
+        currentModelConfig.motionDurations = motionDurations;
+    }
+
+    const hadExpressions = Array.isArray(currentModelConfig.expressions) && currentModelConfig.expressions.length > 0;
+    if (expressions.length === 0 && hadExpressions) {
+        console.warn('[SettingsUI] expression list is empty; keeping the saved expressions instead of wiping them');
+    } else {
+        currentModelConfig.expressions = expressions;
+        currentModelConfig.expressionDurations = expressionDurations;
+        currentModelConfig.hasExpressions = expressions.length > 0;
+    }
     currentModelConfig.defaultExpressionDuration = defaultDur;
-    currentModelConfig.hasExpressions = expressions.length > 0;
-    currentModelConfig.motionEmotions = motionEmotions;
-    currentModelConfig.motionDurations = motionDurations;
     currentModelConfig.defaultMotionDuration = defaultMotionDur;
 
     await window.electronAPI.saveConfig({
@@ -974,6 +988,8 @@ async function loadTTSStatus() {
     const status = await window.electronAPI.ttsGetStatus();
     const el = document.getElementById('tts-status');
     const restartBtn = document.getElementById('btn-restart-tts');
+    const providerNames = { mimo: 'Mimo', aliyun: 'Aliyun', local: 'Local VITS2' };
+    const providerLabel = providerNames[status.serviceType] || status.serviceType || 'Mimo';
     if (status.initialized) {
         if (status.degraded) {
             const elapsed = Date.now() - status.degradedAt;
@@ -981,8 +997,12 @@ async function loadTTSStatus() {
             el.textContent = t('tts.circuitBreak').replace('{0}', remaining);
             el.className = 'status error';
             if (restartBtn) restartBtn.style.display = '';
+        } else if (!status.configured) {
+            el.textContent = t('tts.notConfigured');
+            el.className = 'status error';
+            if (restartBtn) restartBtn.style.display = '';
         } else {
-            el.textContent = t('tts.ready') + ' (Mimo)';
+            el.textContent = t('tts.ready') + ' (' + providerLabel + ')';
             el.className = 'status success';
             if (restartBtn) restartBtn.style.display = 'none';
         }
@@ -1007,6 +1027,8 @@ async function loadTTSStatus() {
     document.getElementById('mimo-api-key').value = mimo.apiKey || '';
     document.getElementById('mimo-style-prompt').value = mimo.stylePrompt || '自然、流畅、清晰的中文语音';
     document.getElementById('mimo-format').value = mimo.format || 'wav';
+    const mimoModelEl = document.getElementById('mimo-model');
+    if (mimoModelEl) mimoModelEl.value = mimo.model || 'mimo-v2.5-tts';
     
     // 阿里云配置
     const aliyun = ttsCfg.aliyun || {};
@@ -1046,6 +1068,7 @@ document.getElementById('btn-save-tts').addEventListener('click', async () => {
             apiKey: document.getElementById('mimo-api-key').value.trim(),
             stylePrompt: document.getElementById('mimo-style-prompt').value.trim(),
             format: document.getElementById('mimo-format').value,
+            model: (document.getElementById('mimo-model')?.value || '').trim() || 'mimo-v2.5-tts',
         }
     };
     // 阿里云配置
@@ -1120,11 +1143,11 @@ document.getElementById('btn-diagnose-tts')?.addEventListener('click', async () 
         if (!diag) throw new Error('IPC无响应');
         const lines = [
             'Service: ' + (diag.serviceExists ? 'OK' : 'N/A'),
+            'Backend: ' + (diag.serviceType || 'N/A'),
             'Init: ' + (diag.initialized ? 'Yes' : 'No'),
             'Circuit: ' + (diag.degraded ? 'Broken' : 'Normal'),
             'Fails: ' + diag.failCount + '/' + diag.maxFails,
-            'API Key: ' + (diag.config?.hasApiKey ? 'Set' : 'Not set'),
-            'Model: ' + (diag.config?.model || 'N/A'),
+            'Configured: ' + (diag.configured ? 'Yes' : 'No (API key missing)'),
             'Available: ' + (diag.isAvailable ? 'Yes' : 'No')
         ];
         el.innerHTML = 'TTS Diagnosis:<br>' + lines.join('<br>');
@@ -1133,6 +1156,299 @@ document.getElementById('btn-diagnose-tts')?.addEventListener('click', async () 
         el.textContent = '诊断失败: ' + e.message;
         el.className = 'status error';
     }
+});
+
+// ========== DSH (DeepSeek Harness) 设置 ==========
+
+async function loadDshSettings() {
+    if (!window.electronAPI || !window.electronAPI.dshStatus) return;
+    let cfg = {};
+    try { cfg = (await window.electronAPI.loadConfig()).dsh || {}; } catch (e) {}
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+    const check = (id, val) => { const el = document.getElementById(id); if (el) el.checked = !!val; };
+    check('dsh-enabled', cfg.enabled !== false);
+    check('dsh-speak', cfg.speakResult !== false);
+    set('dsh-profile', cfg.profile || 'headless');
+    set('dsh-workspace', cfg.workspace || '');
+    set('dsh-script', cfg.script || '');
+    set('dsh-timeout', Math.round((cfg.timeoutMs || 600000) / 1000));
+
+    // 环境检测
+    const el = document.getElementById('dsh-status-line');
+    if (!el) return;
+    try {
+        const st = await window.electronAPI.dshStatus();
+        if (st.available) {
+            el.textContent = '✅ ' + t('dsh.found') + ': ' + (st.script || '');
+            el.className = 'status success';
+        } else {
+            el.textContent = '⚠️ ' + t('dsh.notFound');
+            el.className = 'status error';
+        }
+    } catch (e) {
+        el.textContent = t('dsh.probeFailed') + e.message;
+        el.className = 'status error';
+    }
+}
+
+async function saveDshSettings() {
+    const status = document.getElementById('dsh-save-status');
+    const timeoutSec = parseInt(document.getElementById('dsh-timeout').value, 10);
+    const patch = {
+        enabled: document.getElementById('dsh-enabled').checked,
+        speakResult: document.getElementById('dsh-speak').checked,
+        profile: document.getElementById('dsh-profile').value.trim() || 'headless',
+        workspace: document.getElementById('dsh-workspace').value.trim(),
+        script: document.getElementById('dsh-script').value.trim(),
+        timeoutMs: (Number.isFinite(timeoutSec) && timeoutSec >= 30 ? timeoutSec : 600) * 1000
+    };
+    const res = await window.electronAPI.dshConfig(patch);
+    if (res && res.success) {
+        status.textContent = t('dsh.saved') + (res.available ? '' : ' · ' + t('dsh.notFound'));
+        status.className = res.available ? 'status success' : 'status error';
+    } else {
+        status.textContent = (res && res.error) || t('dsh.saveFailed');
+        status.className = 'status error';
+    }
+    await loadDshSettings();
+}
+
+document.getElementById('btn-save-dsh')?.addEventListener('click', saveDshSettings);
+
+document.getElementById('btn-probe-dsh')?.addEventListener('click', async () => {
+    const el = document.getElementById('dsh-save-status');
+    el.textContent = t('dsh.probing');
+    el.className = 'status info';
+    try {
+        const probe = await window.electronAPI.dshProbe();
+        if (probe && probe.available) {
+            el.textContent = '✅ ' + t('dsh.found') + ': ' + probe.script;
+            el.className = 'status success';
+        } else {
+            el.textContent = '⚠️ ' + t('dsh.notFound') + ' — ' + t('dsh.installHint');
+            el.className = 'status error';
+        }
+    } catch (e) {
+        el.textContent = t('dsh.probeFailed') + e.message;
+        el.className = 'status error';
+    }
+});
+
+// ========== 游戏陪伴设置 ==========
+
+async function loadCompanionSettings() {
+    if (!window.electronAPI || !window.electronAPI.loadConfig) return;
+    let cfg = {};
+    try { cfg = (await window.electronAPI.loadConfig()).companion || {}; } catch (e) {}
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+    const check = (id, val) => { const el = document.getElementById(id); if (el) el.checked = !!val; };
+    check('companion-enabled', cfg.enabled);
+    check('companion-game-only', cfg.gameOnly !== false);
+    check('companion-dsh', cfg.offerDshHelp !== false);
+    check('companion-voice', cfg.voiceInput !== false);
+    check('companion-screenshots', cfg.useScreenshots !== false);
+    set('companion-interval', Math.round((cfg.commentIntervalMs || 120000) / 1000));
+    set('companion-patterns', Array.isArray(cfg.gamePatterns) ? cfg.gamePatterns.join(', ') : '');
+}
+
+document.getElementById('btn-save-companion')?.addEventListener('click', async () => {
+    const status = document.getElementById('companion-save-status');
+    const secs = parseInt(document.getElementById('companion-interval').value, 10);
+    const patterns = document.getElementById('companion-patterns').value
+        .split(',').map(s => s.trim()).filter(Boolean);
+    await window.electronAPI.saveConfig({
+        companion: {
+            enabled: document.getElementById('companion-enabled').checked,
+            gameOnly: document.getElementById('companion-game-only').checked,
+            offerDshHelp: document.getElementById('companion-dsh').checked,
+            voiceInput: document.getElementById('companion-voice').checked,
+            useScreenshots: document.getElementById('companion-screenshots').checked,
+            commentIntervalMs: (Number.isFinite(secs) && secs >= 30 ? secs : 120) * 1000,
+            gamePatterns: patterns
+        }
+    });
+    status.textContent = t('companion.saved');
+    status.className = 'status success';
+    await loadCompanionSettings();
+});
+
+// ========== 哔哩哔哩直播间弹幕设置 ==========
+
+async function loadBiliSettings() {
+    if (!window.electronAPI || !window.electronAPI.biliStatus) return;
+    let cfg = {};
+    try { cfg = (await window.electronAPI.loadConfig()).bilibili || {}; } catch (e) {}
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+    const check = (id, val) => { const el = document.getElementById(id); if (el) el.checked = !!val; };
+    check('bili-enabled', cfg.enabled === true);
+    set('bili-room', cfg.roomId || '');
+    set('bili-cookie', cfg.cookie || '');
+    set('bili-mode', cfg.mode || 'question');
+    set('bili-mentions', Array.isArray(cfg.mentions) ? cfg.mentions.join(', ') : '');
+    set('bili-ignore', Array.isArray(cfg.ignoreList) ? cfg.ignoreList.join(', ') : '');
+    set('bili-interval', Math.max(3, Math.round((cfg.replyIntervalMs || 15000) / 1000)));
+    set('bili-cooldown', Math.max(0, Math.round((cfg.userCooldownMs || 60000) / 1000)));
+
+    const el = document.getElementById('bili-status-line');
+    if (!el) return;
+    try {
+        const st = await window.electronAPI.biliStatus();
+        if (st.connected) {
+            el.textContent = '🟢 ' + t('bili.connected')
+                + (st.loggedIn ? ' · ' + t('bili.loggedIn') : '')
+                + ' · ' + (st.realRoomId || st.roomId)
+                + (st.received ? ` · ${st.received} ` + t('bili.received') : '');
+            el.className = 'status success';
+        } else if (st.waitingForLive) {
+            el.textContent = '⏳ ' + t('bili.notLive') + (st.roomTitle ? ' · ' + st.roomTitle : '');
+            el.className = 'status';
+        } else if (st.lastError) {
+            el.textContent = '⚠️ ' + t('bili.notConnected') + ' · ' + st.lastError;
+            el.className = 'status error';
+        } else {
+            el.textContent = t('bili.notConnected');
+            el.className = 'status';
+        }
+    } catch (e) {
+        el.textContent = t('bili.statusFailed') + e.message;
+        el.className = 'status error';
+    }
+}
+
+function readBiliForm() {
+    const secs = parseInt(document.getElementById('bili-interval').value, 10);
+    const cd = parseInt(document.getElementById('bili-cooldown').value, 10);
+    const list = (id) => document.getElementById(id).value
+        .split(',').map(s => s.trim()).filter(Boolean);
+    return {
+        enabled: document.getElementById('bili-enabled').checked,
+        roomId: document.getElementById('bili-room').value.trim(),
+        cookie: (document.getElementById('bili-cookie')?.value || '').trim(),
+        mode: document.getElementById('bili-mode').value || 'question',
+        mentions: list('bili-mentions'),
+        ignoreList: list('bili-ignore'),
+        replyIntervalMs: (Number.isFinite(secs) && secs >= 3 ? secs : 15) * 1000,
+        userCooldownMs: (Number.isFinite(cd) && cd >= 0 ? cd : 60) * 1000
+    };
+}
+
+document.getElementById('btn-save-bili')?.addEventListener('click', async () => {
+    const status = document.getElementById('bili-save-status');
+    const patch = readBiliForm();
+    const res = await window.electronAPI.biliConfig(patch);
+    // The running pet keeps its own copy of these settings; refresh it so the
+    // switch takes effect without restarting.
+    if (petSystem && petSystem.reloadLiveCompanionConfig) {
+        await petSystem.reloadLiveCompanionConfig();
+    }
+    if (res && res.success) {
+        status.textContent = t('bili.saved');
+        status.className = 'status success';
+        // 打开开关且填了房间号 → 立刻连接
+        if (patch.enabled && patch.roomId) {
+            const conn = await window.electronAPI.biliStart(patch.roomId);
+            if (conn && conn.success) {
+                status.textContent = t('bili.saved') + ' · ' + t('bili.connected');
+            } else if (conn) {
+                status.textContent = t('bili.saved') + ' · ' + (conn.error || t('bili.connectFailed'));
+                status.className = 'status error';
+            }
+        }
+    } else {
+        status.textContent = (res && res.error) || t('bili.saveFailed');
+        status.className = 'status error';
+    }
+    await loadBiliSettings();
+});
+
+document.getElementById('btn-connect-bili')?.addEventListener('click', async () => {
+    const status = document.getElementById('bili-save-status');
+    const room = document.getElementById('bili-room').value.trim();
+    if (!room) {
+        status.textContent = t('bili.needRoom');
+        status.className = 'status error';
+        return;
+    }
+    status.textContent = t('bili.connecting');
+    status.className = 'status';
+    await window.electronAPI.biliConfig({ roomId: room, enabled: true });
+    const res = await window.electronAPI.biliStart(room);
+    if (res && res.success) {
+        status.textContent = t('bili.connected') + (res.room?.title ? ' · ' + res.room.title : '');
+        status.className = 'status success';
+    } else {
+        status.textContent = (res && res.error) || t('bili.connectFailed');
+        status.className = 'status error';
+    }
+    await loadBiliSettings();
+});
+
+document.getElementById('btn-disconnect-bili')?.addEventListener('click', async () => {
+    await window.electronAPI.biliStop();
+    const status = document.getElementById('bili-save-status');
+    status.textContent = t('bili.disconnected');
+    status.className = 'status';
+    await loadBiliSettings();
+});
+
+// ========== OBS 采集窗口设置 ==========
+
+async function loadCaptureSettings() {
+    if (!window.electronAPI || !window.electronAPI.captureStatus) return;
+    let cfg = {};
+    try { cfg = (await window.electronAPI.loadConfig()).capture || {}; } catch (e) {}
+    const colorEl = document.getElementById('capture-color');
+    if (colorEl) colorEl.value = cfg.color || '#00ff00';
+    const wEl = document.getElementById('capture-width');
+    if (wEl) wEl.value = cfg.width || 600;
+    const hEl = document.getElementById('capture-height');
+    if (hEl) hEl.value = cfg.height || 800;
+
+    const line = document.getElementById('capture-status-line');
+    if (!line) return;
+    try {
+        const st = await window.electronAPI.captureStatus();
+        if (st.open) {
+            line.textContent = '🟢 ' + t('capture.opened') + ' · ' + st.title;
+            line.className = 'status success';
+        } else {
+            line.textContent = t('capture.closed');
+            line.className = 'status';
+        }
+        const btn = document.getElementById('btn-capture-toggle');
+        if (btn) btn.textContent = t(st.open ? 'capture.close' : 'capture.open');
+    } catch (e) {
+        line.textContent = t('capture.statusFailed') + e.message;
+        line.className = 'status error';
+    }
+}
+
+document.getElementById('btn-capture-save')?.addEventListener('click', async () => {
+    const status = document.getElementById('capture-save-status');
+    const color = document.getElementById('capture-color').value || '#00ff00';
+    const width = parseInt(document.getElementById('capture-width').value, 10);
+    const height = parseInt(document.getElementById('capture-height').value, 10);
+    const res = await window.electronAPI.captureConfig({
+        color,
+        width: Number.isFinite(width) && width >= 120 ? width : 600,
+        height: Number.isFinite(height) && height >= 120 ? height : 800
+    });
+    status.textContent = res && res.success ? t('capture.saved') : ((res && res.error) || t('capture.saveFailed'));
+    status.className = res && res.success ? 'status success' : 'status error';
+    await loadCaptureSettings();
+});
+
+document.getElementById('btn-capture-toggle')?.addEventListener('click', async () => {
+    const status = document.getElementById('capture-save-status');
+    const res = await window.electronAPI.captureToggle();
+    if (res && res.success) {
+        status.textContent = res.open ? t('capture.openedHint') : t('capture.closedHint');
+        status.className = 'status success';
+    } else {
+        status.textContent = (res && res.error) || t('capture.toggleFailed');
+        status.className = 'status error';
+    }
+    await loadCaptureSettings();
 });
 
 // ========== Max Tokens Multiplier ==========
@@ -1397,16 +1713,16 @@ async function loadSTTConfig() {
         }
     } catch (e) {}
 }
-const saveAsrBtn = document.getElementById('btn-save-asr');
-if (saveAsrBtn) {
-    saveAsrBtn.addEventListener('click', async () => {
-        showStatus('asr-status', '云端 STT 配置已在 config.json 的 stt 字段中设置', 'success');
-    });
-}
 loadSTTConfig();
-
 // Final: load TTS status after all DOM is ready
 loadTTSStatus();
+// DSH bridge + game companion panels
+loadDshSettings();
+loadCompanionSettings();
+// Bilibili live danmaku panel
+loadBiliSettings();
+// OBS capture window panel
+loadCaptureSettings();
 
 // ========== 酒馆预设管理 ==========
 const BUILTIN_PRESETS = ['fantasy-tavern', 'cyber-bar', 'xianxia-tavern'];
