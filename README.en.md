@@ -135,8 +135,16 @@ Live2DPet-modern/
 ## 🙏 Credits
 
 - Original project: [x380kkm/Live2DPet](https://github.com/x380kkm/Live2DPet)
+- **[xfgryujk/blivedm](https://github.com/xfgryujk/blivedm)** — the design reference for our Bilibili live danmaku
+  client. Our WebSocket implementation follows its handshake: WBI signing with re-sign on `-352`, `buvid` in the
+  auth packet, danmaku host-list rotation and periodic re-init, graceful fallback to the default server list, and
+  optional SESSDATA login. Thanks for documenting the protocol so clearly.
+- [xfgryujk/blivechat](https://github.com/xfgryujk/blivechat) — live danmaku app by the same author
+- [Bilibili live open-platform protocol docs](https://open-live.bilibili.com/document/657d8e34-f926-a133-16c0-300c1afc6e6b)
+- [DeepSeek Harness](https://github.com/deepseek-ai) — agent runtime the pet can drive
 - [Live2D Cubism](https://www.live2d.com/) — Model rendering engine
 - [Electron](https://www.electronjs.org/) — Desktop framework
+- [PixiJS](https://pixijs.com/) — Rendering
 - [Mimo API](https://xiaomimimo.com/) — Speech services
 - [OpenRouter](https://openrouter.ai/) — AI model API
 

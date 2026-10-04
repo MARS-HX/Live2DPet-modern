@@ -83,8 +83,17 @@ npm run build:dir      # ディレクトリビルド
 ## 🙏 クレジット
 
 - オリジナルプロジェクト: [x380kkm/Live2DPet](https://github.com/x380kkm/Live2DPet)
+- **[xfgryujk/blivedm](https://github.com/xfgryujk/blivedm)** — Bilibili ライブ弾幕クライアントの設計参照。
+  本プロジェクトの WebSocket 実装は同ライブラリのハンドシェイクに倣っています：WBI 署名と `-352` 時の再署名、
+  auth パケットへの `buvid` 付与、弾幕ホストリストのローテーションと定期的な再初期化、
+  取得失敗時のデフォルトサーバへのフォールバック、任意の SESSDATA ログイン。
+  プロトコルを分かりやすく整理してくださったことに感謝します。
+- [xfgryujk/blivechat](https://github.com/xfgryujk/blivechat) — 同作者によるライブ弾幕アプリ
+- [Bilibili ライブ開放プラットフォーム プロトコル文書](https://open-live.bilibili.com/document/657d8e34-f926-a133-16c0-300c1afc6e6b)
+- [DeepSeek Harness](https://github.com/deepseek-ai) — ペットが操作できるエージェント実行環境
 - [Live2D Cubism](https://www.live2d.com/)
 - [Electron](https://www.electronjs.org/)
+- [PixiJS](https://pixijs.com/)
 - [Mimo API](https://xiaomimimo.com/)
 - [OpenRouter](https://openrouter.ai/)
 

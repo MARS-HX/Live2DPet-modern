@@ -4,6 +4,24 @@ This software does NOT bundle the following components. They are downloaded
 at runtime from their original sources by the user. Users must comply with
 each component's license terms independently.
 
+DESIGN REFERENCES (no code copied or bundled)
+
+blivedm — Python Bilibili live danmaku client
+  - Source: https://github.com/xfgryujk/blivedm
+  - License: MIT (xfgryujk)
+  - Credit: The Bilibili live danmaku client in this software was designed
+    after blivedm's WebSocket handshake: WBI signing with re-sign on -352,
+    buvid in the auth packet, danmaku host-list rotation and periodic
+    re-initialisation, fallback to the default server list when the API
+    fails, and optional SESSDATA login. No blivedm source code is included;
+    only the documented protocol behaviour was re-implemented for Node.js.
+  - Protocol documentation:
+    https://open-live.bilibili.com/document/657d8e34-f926-a133-16c0-300c1afc6e6b
+
+blivechat — live danmaku overlay app
+  - Source: https://github.com/xfgryujk/blivechat
+  - Credit: reference for danmaku presentation ideas.
+
 VOICEVOX (TTS Engine, Voice Models, ONNX Runtime)
   - Source: https://github.com/VOICEVOX
   - License: MIT (Core) / Custom License (VVM, ONNX Runtime binary)
