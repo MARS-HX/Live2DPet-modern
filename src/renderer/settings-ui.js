@@ -1391,66 +1391,6 @@ document.getElementById('btn-disconnect-bili')?.addEventListener('click', async 
     await loadBiliSettings();
 });
 
-// ========== OBS 采集窗口设置 ==========
-
-async function loadCaptureSettings() {
-    if (!window.electronAPI || !window.electronAPI.captureStatus) return;
-    let cfg = {};
-    try { cfg = (await window.electronAPI.loadConfig()).capture || {}; } catch (e) {}
-    const colorEl = document.getElementById('capture-color');
-    if (colorEl) colorEl.value = cfg.color || '#00ff00';
-    const wEl = document.getElementById('capture-width');
-    if (wEl) wEl.value = cfg.width || 600;
-    const hEl = document.getElementById('capture-height');
-    if (hEl) hEl.value = cfg.height || 800;
-
-    const line = document.getElementById('capture-status-line');
-    if (!line) return;
-    try {
-        const st = await window.electronAPI.captureStatus();
-        if (st.open) {
-            line.textContent = '🟢 ' + t('capture.opened') + ' · ' + st.title;
-            line.className = 'status success';
-        } else {
-            line.textContent = t('capture.closed');
-            line.className = 'status';
-        }
-        const btn = document.getElementById('btn-capture-toggle');
-        if (btn) btn.textContent = t(st.open ? 'capture.close' : 'capture.open');
-    } catch (e) {
-        line.textContent = t('capture.statusFailed') + e.message;
-        line.className = 'status error';
-    }
-}
-
-document.getElementById('btn-capture-save')?.addEventListener('click', async () => {
-    const status = document.getElementById('capture-save-status');
-    const color = document.getElementById('capture-color').value || '#00ff00';
-    const width = parseInt(document.getElementById('capture-width').value, 10);
-    const height = parseInt(document.getElementById('capture-height').value, 10);
-    const res = await window.electronAPI.captureConfig({
-        color,
-        width: Number.isFinite(width) && width >= 120 ? width : 600,
-        height: Number.isFinite(height) && height >= 120 ? height : 800
-    });
-    status.textContent = res && res.success ? t('capture.saved') : ((res && res.error) || t('capture.saveFailed'));
-    status.className = res && res.success ? 'status success' : 'status error';
-    await loadCaptureSettings();
-});
-
-document.getElementById('btn-capture-toggle')?.addEventListener('click', async () => {
-    const status = document.getElementById('capture-save-status');
-    const res = await window.electronAPI.captureToggle();
-    if (res && res.success) {
-        status.textContent = res.open ? t('capture.openedHint') : t('capture.closedHint');
-        status.className = 'status success';
-    } else {
-        status.textContent = (res && res.error) || t('capture.toggleFailed');
-        status.className = 'status error';
-    }
-    await loadCaptureSettings();
-});
-
 // ========== Max Tokens Multiplier ==========
 
 function loadTokenMultiplierUI(multiplier) {
@@ -1721,8 +1661,6 @@ loadDshSettings();
 loadCompanionSettings();
 // Bilibili live danmaku panel
 loadBiliSettings();
-// OBS capture window panel
-loadCaptureSettings();
 
 // ========== 酒馆预设管理 ==========
 const BUILTIN_PRESETS = ['fantasy-tavern', 'cyber-bar', 'xianxia-tavern'];

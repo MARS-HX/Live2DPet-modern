@@ -1,13 +1,13 @@
 {
   "name": "live2dpet",
-  "version": "1.6.1",
+  "version": "1.6.2",
   "description": "AI desktop pet companion with multi-backend TTS, dual mode, enhanced memory",
   "author": "x380kkm",
   "main": "main.js",
   "scripts": {
     "start": "node launch.js",
     "dev": "node launch.js --dev",
-    "test": "node --test tests/test-core.js tests/test-enhance.js tests/test-config-manager.js tests/test-crypto-utils.js tests/test-validators.js tests/test-dsh-bridge.js tests/test-game-companion.js tests/test-bilibili-danmaku.js tests/test-live-companion.js tests/test-danmaku-reply-flow.js tests/test-capture-window.js",
+    "test": "node --test tests/test-core.js tests/test-enhance.js tests/test-config-manager.js tests/test-crypto-utils.js tests/test-validators.js tests/test-dsh-bridge.js tests/test-game-companion.js tests/test-bilibili-danmaku.js tests/test-live-companion.js tests/test-danmaku-reply-flow.js",
     "build": "electron-builder --win portable",
     "build:dir": "electron-builder --win dir"
   },

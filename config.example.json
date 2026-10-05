@@ -201,13 +201,6 @@
     "cookie": "",
     "lastError": null
   },
-  "capture": {
-    "enabled": true,
-    "color": "#00FF00",
-    "width": 600,
-    "height": 800,
-    "title": "Live2DPet Capture"
-  },
   "allowSimultaneous": true,
   "activeCharacterId": "10ac0353-e038-4c69-b373-3905b1f4b014",
   "characters": [

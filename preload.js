@@ -109,12 +109,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onBiliDanmaku: (cb) => ipcRenderer.on('bili://danmaku', (e, data) => cb(data)),
     onBiliStatus: (cb) => ipcRenderer.on('bili://status', (e, data) => cb(data)),
 
-    // ========== OBS 采集窗口 ==========
-    // 透明窗口 OBS 抓出来是全黑，这里提供一个带抠像底色的不透明窗口。
-    captureStatus: () => ipcRenderer.invoke('capture-status'),
-    captureToggle: () => ipcRenderer.invoke('capture-toggle'),
-    captureConfig: (patch) => ipcRenderer.invoke('capture-config', patch),
-
     // ========== 语音识别 (ASR) - 云端/旧版 ==========
     TRANSCRIBE_AUDIO: (audioBuffer, mimeType) => ipcRenderer.invoke('TRANSCRIBE_AUDIO', audioBuffer, mimeType),
 

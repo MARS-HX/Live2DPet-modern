@@ -26,7 +26,6 @@ const { registerDefaultAudioIPC } = require('./src/main/default-audio-ipc');
 const { registerModelImport } = require('./src/main/model-import');
 const { registerDshIPC } = require('./src/main/dsh-ipc');
 const { registerBilibiliIPC } = require('./src/main/bilibili-ipc');
-const { registerCaptureIPC } = require('./src/main/capture-ipc');
 const { createPathUtils } = require('./src/utils/path-utils');
 const { TTSService } = require('./src/core/tts-service');
 
@@ -59,9 +58,6 @@ registerDshIPC(ctx, ipcMain, { configManager, app, path });
 
 // ========== Bilibili live danmaku ==========
 registerBilibiliIPC(ctx, ipcMain, { configManager, app });
-
-// ========== OBS capture window ==========
-registerCaptureIPC(ctx, ipcMain, { configManager, app, path, basePath, BrowserWindow });
 
 // ========== 麦克风权限（保留，但 STT 未使用） ==========
 ipcMain.handle('REQUEST_MICROPHONE_ACCESS', async () => {

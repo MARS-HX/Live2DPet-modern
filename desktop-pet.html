@@ -51,14 +51,6 @@
             display: flex; align-items: center; justify-content: center;
         }
         .ctrl-btn:hover { background: rgba(255,255,255,1); }
-
-        /* OBS capture mode: an opaque chroma-key background instead of
-           transparency, because OBS reads a layered (transparent) window as
-           black. The user keys this colour out with a Chroma Key filter. */
-        body.capture-mode { background: var(--capture-color, #00FF00); }
-        body.capture-mode .controls,
-        body.capture-mode #canvas-y-adjust,
-        body.capture-mode #resize-handle { display: none !important; }
         .ctrl-btn:disabled { opacity: 0.3; cursor: default; }
 
         /* ===== 聊天框样式（可拖动 + 置顶） ===== */
@@ -249,26 +241,6 @@
     <script>
         let currentAdapter = null;
         let trackX = 0, trackY = 0;
-
-        // ========== OBS capture mode ==========
-        // The capture window loads this page with ?capture=1&color=RRGGBB.
-        // It paints an opaque chroma-key background so OBS's Window Capture can
-        // read the window at all (layered/transparent windows come out black).
-        (function applyCaptureMode() {
-            try {
-                const params = new URLSearchParams(location.search);
-                if (params.get('capture') !== '1') return;
-                const raw = (params.get('color') || '00FF00').replace(/[^0-9a-fA-F]/g, '');
-                const color = '#' + (raw.length === 6 ? raw : raw.length === 3
-                    ? raw.split('').map(c => c + c).join('')
-                    : '00FF00');
-                document.documentElement.style.setProperty('--capture-color', color);
-                document.body.style.background = color;
-                document.body.classList.add('capture-mode');
-                // Stay draggable (inherited from html/body) so the user can move
-                // this always-on-top window out of the way.
-            } catch (e) { /* never block the pet from rendering */ }
-        })();
 
         // ========== Adapter-based Init ==========
         async function initModel() {

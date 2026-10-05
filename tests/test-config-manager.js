@@ -67,13 +67,10 @@ describe('getDefaultConfig', () => {
         assert.deepStrictEqual(b.replyTypes, ['danmaku', 'superchat']);
     });
 
-    it('includes the OBS capture defaults', () => {
-        const c = getDefaultConfig().capture;
-        assert.ok(c, 'missing capture section');
-        assert.strictEqual(c.enabled, false);
-        assert.strictEqual(c.color, '#00FF00');
-        assert.ok(c.width >= 120 && c.height >= 120);
-        assert.ok(c.title);
+    it('no longer ships the removed OBS capture-window section', () => {
+        // Replaced by Game Capture guidance in the UI; the separate chroma
+        // window duplicated rendering and blocked the screen.
+        assert.strictEqual(getDefaultConfig().capture, undefined);
     });
 });
 
