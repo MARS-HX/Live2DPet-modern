@@ -1391,7 +1391,64 @@ document.getElementById('btn-disconnect-bili')?.addEventListener('click', async 
     await loadBiliSettings();
 });
 
-// ========== OBS 兼容模式 ==========
+// ========== OBS 兼容模式 + 浏览器源 ==========
+
+async function loadObsBrowserSource() {
+    if (!window.electronAPI || !window.electronAPI.obsServerGet) return;
+    const line = document.getElementById('obs-bs-status');
+    const input = document.getElementById('obs-bs-url');
+    const btn = document.getElementById('btn-obs-bs-toggle');
+    try {
+        const st = await window.electronAPI.obsServerGet();
+        if (input) input.value = st.url || '';
+        if (btn) btn.textContent = t(st.running ? 'obs.bsDisable' : 'obs.bsEnable');
+        if (!line) return;
+        if (st.running) {
+            line.textContent = '🟢 ' + t('obs.bsRunning') + ' · ' + st.url
+                + (st.clients ? ` · ${st.clients} ` + t('obs.bsClients') : '');
+            line.className = 'status success';
+        } else {
+            line.textContent = t('obs.bsStopped');
+            line.className = 'status';
+        }
+    } catch (e) {
+        if (line) { line.textContent = t('obs.statusFailed') + e.message; line.className = 'status error'; }
+    }
+}
+
+document.getElementById('btn-obs-bs-toggle')?.addEventListener('click', async () => {
+    const msg = document.getElementById('obs-bs-msg');
+    const btn = document.getElementById('btn-obs-bs-toggle');
+    try {
+        const cur = await window.electronAPI.obsServerGet();
+        const res = cur.running
+            ? await window.electronAPI.obsServerStop()
+            : await window.electronAPI.obsServerStart({ port: cur.preferredPort || 0 });
+        if (msg) {
+            msg.textContent = res && res.success
+                ? (res.running ? t('obs.bsStarted') + ' ' + res.url : t('obs.bsStoppedMsg'))
+                : ((res && res.error) || t('obs.saveFailed'));
+            msg.className = res && res.success ? 'status success' : 'status error';
+        }
+    } catch (e) {
+        if (msg) { msg.textContent = e.message; msg.className = 'status error'; }
+    }
+    await loadObsBrowserSource();
+});
+
+document.getElementById('btn-obs-bs-copy')?.addEventListener('click', async () => {
+    const msg = document.getElementById('obs-bs-msg');
+    const url = document.getElementById('obs-bs-url')?.value || '';
+    if (!url) return;
+    try {
+        await navigator.clipboard.writeText(url);
+        if (msg) { msg.textContent = t('obs.bsCopied'); msg.className = 'status success'; }
+    } catch {
+        const input = document.getElementById('obs-bs-url');
+        input?.select();
+        if (msg) { msg.textContent = t('obs.bsCopyManual'); msg.className = 'status'; }
+    }
+});
 
 async function loadObsMode() {
     if (!window.electronAPI || !window.electronAPI.obsModeGet) return;
@@ -1707,8 +1764,9 @@ loadDshSettings();
 loadCompanionSettings();
 // Bilibili live danmaku panel
 loadBiliSettings();
-// OBS compatibility mode
+// OBS compatibility mode + browser source
 loadObsMode();
+loadObsBrowserSource();
 
 // ========== 酒馆预设管理 ==========
 const BUILTIN_PRESETS = ['fantasy-tavern', 'cyber-bar', 'xianxia-tavern'];

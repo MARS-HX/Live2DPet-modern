@@ -70,7 +70,13 @@ function getDefaultObsConfig() {
         // Chromium bypasses the Windows GDI, so OBS captures a black rectangle.
         // Turning off GPU compositing puts it back on a capturable path.
         // Needs an app restart; costs some rendering performance.
-        compatible: false
+        compatible: false,
+        // Browser Source: OBS renders the pet itself, so no window capture is
+        // involved and transparency works properly. This is the reliable path.
+        browserSource: {
+            enabled: true,
+            port: 0            // 0 = pick a free port automatically
+        }
     };
 }
 

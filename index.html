@@ -340,7 +340,23 @@
     </div>
     <div class="card">
         <h2 data-i18n="obs.title">Use the pet in OBS</h2>
-        <p class="model-info" data-i18n="obs.desc">OBS usually captures this window as a black rectangle: Chromium renders through a path that bypasses the Windows GDI, so OBS cannot read it. Turning on compatibility mode below fixes that, at the cost of some rendering performance.</p>
+        <p class="model-info" data-i18n="obs.desc">Recommended: add the pet as an <b>OBS Browser Source</b>. OBS draws the pet itself, so transparency works properly and there is no window capture involved at all. Nothing extra appears on your desktop.</p>
+        <div class="status" id="obs-bs-status"></div>
+        <label data-i18n="obs.bsUrl">Browser source URL</label>
+        <input type="text" id="obs-bs-url" readonly placeholder="http://127.0.0.1:.../obs">
+        <div class="btn-row">
+            <button class="btn btn-primary" id="btn-obs-bs-copy" data-i18n="obs.bsCopy">Copy URL</button>
+            <button class="btn btn-secondary" id="btn-obs-bs-toggle" data-i18n="obs.bsEnable">Enable</button>
+        </div>
+        <div class="status" id="obs-bs-msg"></div>
+        <ol class="model-info" style="font-size:12px;line-height:1.7;padding-left:18px;">
+            <li data-i18n="obs.bsStep1">In OBS: Sources → ＋ → <b>Browser</b>.</li>
+            <li data-i18n="obs.bsStep2">Paste the URL above, set the size (for example 400 × 600), then OK.</li>
+            <li data-i18n="obs.bsStep3">That is it — the pet appears with a real transparent background.</li>
+        </ol>
+        <hr style="border:none;border-top:1px solid rgba(128,128,128,0.25);margin:12px 0;">
+        <p class="model-info" style="font-size:12px;" data-i18n="obs.fallbackTitle">Only if you prefer capturing the window instead</p>
+        <p class="model-info" style="font-size:11px;color:#888;" data-i18n="obs.fallbackDesc">OBS normally reads a black rectangle from this window: Chromium bypasses the Windows GDI. Compatibility mode brings it back onto a capturable path, at the cost of some rendering performance.</p>
         <label style="display:flex;align-items:center;gap:8px;">
             <input type="checkbox" id="obs-compatible">
             <span data-i18n="obs.compatible">OBS compatibility mode (restart required)</span>
@@ -351,14 +367,6 @@
             <button class="btn btn-secondary" id="btn-obs-restart" data-i18n="obs.restart">Restart now</button>
         </div>
         <div class="status" id="obs-save-status"></div>
-        <hr style="border:none;border-top:1px solid rgba(128,128,128,0.25);margin:12px 0;">
-        <p class="model-info" style="font-size:12px;" data-i18n="obs.howtoTitle">After restarting, add the pet in OBS:</p>
-        <ol class="model-info" style="font-size:12px;line-height:1.7;padding-left:18px;">
-            <li data-i18n="obs.step1">Sources → ＋ → <b>Window Capture</b> → pick the window titled <b>Desktop Pet</b>.</li>
-            <li data-i18n="obs.step2">If it is still black, try <b>Game Capture</b> instead and tick <b>Allow Transparency</b>.</li>
-            <li data-i18n="obs.step3">Last resort: <b>Display Capture</b> — the pet appears exactly as it does on screen.</li>
-        </ol>
-        <p class="model-info" style="font-size:11px;color:#888;" data-i18n="obs.trouble">Compatibility mode lowers rendering performance a little. Turn it off when you are not streaming.</p>
     </div>
     <div class="card">
         <h2 data-i18n="bili.title">Bilibili Live Danmaku</h2>

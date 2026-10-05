@@ -37,6 +37,7 @@ const { registerModelImport } = require('./src/main/model-import');
 const { registerDshIPC } = require('./src/main/dsh-ipc');
 const { registerBilibiliIPC } = require('./src/main/bilibili-ipc');
 const { registerObsIPC } = require('./src/main/obs-ipc');
+const { registerObsBrowserSource } = require('./src/main/obs-browser-ipc');
 const { createPathUtils } = require('./src/utils/path-utils');
 const { TTSService } = require('./src/core/tts-service');
 
@@ -72,6 +73,7 @@ registerBilibiliIPC(ctx, ipcMain, { configManager, app });
 
 // ========== OBS 兼容模式 ==========
 ctx.obsModeActive = !!global.__obsModeActive;
+registerObsBrowserSource(ctx, { app, http, fs, path, ws: require('ws'), basePath, configManager });
 registerObsIPC(ctx, ipcMain, { configManager, app });
 
 // ========== 麦克风权限（保留，但 STT 未使用） ==========

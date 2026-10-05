@@ -115,6 +115,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     obsModeSet: (patch) => ipcRenderer.invoke('obs-mode-set', patch),
     appRestart: () => ipcRenderer.invoke('app-restart'),
 
+    // 浏览器源（推荐）：OBS 自己渲染桌宠页面，不依赖窗口采集，透明正常
+    obsServerGet: () => ipcRenderer.invoke('obs-server-get'),
+    obsServerStart: (patch) => ipcRenderer.invoke('obs-server-start', patch),
+    obsServerStop: () => ipcRenderer.invoke('obs-server-stop'),
+
     // ========== 语音识别 (ASR) - 云端/旧版 ==========
     TRANSCRIBE_AUDIO: (audioBuffer, mimeType) => ipcRenderer.invoke('TRANSCRIBE_AUDIO', audioBuffer, mimeType),
 
