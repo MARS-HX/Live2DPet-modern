@@ -98,7 +98,7 @@ v1.6.0 里我用了一个「另开一个不透明抠像窗口 + 色度键」的�
 
 ```
 SHA256 (Live2DPet-v1.6.2-portable.zip)
-__SHA256__
+A3941B40109D00E9694B9B396E45FE7B4C8560309C9097E4453102AD9DE2AFBA
 ```
 
 > ⚠️ 本版本**不内置任何 API Key**。首次运行请把 `config.example.json` 复制为 `config.json`
