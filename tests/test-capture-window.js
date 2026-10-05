@@ -14,6 +14,7 @@ const {
     clampSize,
     DEFAULT_CHROMA,
     DEFAULT_TITLE,
+    REVEAL_FALLBACK_MS,
 } = require('../src/main/capture-window');
 
 describe('normalizeChromaColor', () => {
@@ -61,9 +62,15 @@ describe('captureWindowOptions', () => {
         assert.strictEqual(opts.title, DEFAULT_TITLE);
     });
 
-    it('stays out of the way of the user', () => {
-        assert.strictEqual(opts.alwaysOnTop, false);
+    it('stays on top, because an occluded window captures as black', () => {
+        // Regression: this used to be false, so the surface hid behind the
+        // user's fullscreen apps and OBS saw nothing at all.
+        assert.strictEqual(opts.alwaysOnTop, true);
         assert.strictEqual(opts.frame, false);
+    });
+
+    it('can be told not to stay on top', () => {
+        assert.strictEqual(captureWindowOptions({ alwaysOnTop: false }).alwaysOnTop, false);
     });
 
     it('applies the requested size and the preload script', () => {
@@ -173,8 +180,30 @@ describe('CaptureWindowManager', () => {
         assert.strictEqual(created.length, 0);
     });
 
-    it('survives a BrowserWindow constructor failure', () => {
-        const manager = new CaptureWindowManager({
+    it('reveals the window even when ready-to-show never fires', async () => {
+        // Regression, found by screenshotting a real desktop: the surface was
+        // created (and logged) but never became visible, so OBS had nothing to
+        // capture and the user saw no green window at all.
+        const { manager, created } = makeManager();
+        manager.show({});
+        const win = created[0];
+        assert.strictEqual(win.shown, false, 'not shown synchronously');
+        await new Promise((r) => setTimeout(r, REVEAL_FALLBACK_MS + 300));
+        assert.strictEqual(win.shown, true, 'the fallback timer revealed it');
+        manager.close();
+    });
+
+    it('reveals immediately when ready-to-show does fire', () => {
+        const { manager, created } = makeManager();
+        manager.show({});
+        const win = created[0];
+        win.emit('ready-to-show');
+        assert.strictEqual(win.shown, true);
+        assert.strictEqual(manager.isOpen(), true);
+        manager.close();
+    });
+
+    it('survives a BrowserWindow constructor failure', () => {        const manager = new CaptureWindowManager({
             BrowserWindow: class { constructor() { throw new Error('no display'); } },
             path: { join: (...p) => p.join('/') },
             basePath: 'E:/app',

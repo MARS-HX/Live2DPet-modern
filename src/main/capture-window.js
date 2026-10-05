@@ -20,6 +20,8 @@ const DEFAULT_WIDTH = 600;
 const DEFAULT_HEIGHT = 800;
 const MIN_SIZE = 120;
 const MAX_SIZE = 4096;
+/** If `ready-to-show` never fires, force the window visible after this long. */
+const REVEAL_FALLBACK_MS = 1200;
 
 /** Normalize '#0f0' / '00ff00' / '#00FF00' → '#00FF00'. */
 function normalizeChromaColor(input, fallback = DEFAULT_CHROMA) {
@@ -62,7 +64,10 @@ function captureWindowOptions(config = {}, deps = {}) {
         backgroundColor: normalizeChromaColor(config.color),
         hasShadow: false,
         skipTaskbar: false,
-        alwaysOnTop: false,
+        // Must stay ABOVE other windows. OBS's BitBlt window capture reads the
+        // window's backing store, so an occluded surface comes back black — a
+        // capture window tucked behind the browser is worse than useless.
+        alwaysOnTop: config.alwaysOnTop !== false,
         resizable: true,
         minimizable: true,
         maximizable: false,
@@ -123,15 +128,32 @@ class CaptureWindowManager {
         const file = this._path.join(this._basePath, 'desktop-pet.html');
         const query = buildCaptureQuery(config);
         this._window.loadFile(file, { query });
-        this._window.once?.('ready-to-show', () => {
-            try { this._window.show(); } catch { /* closed already */ }
+
+        // Show it, and never let it stay hidden: a hidden or occluded window is
+        // exactly what makes OBS report "nothing / black" for this source.
+        const reveal = () => {
+            const win = this._window;
+            if (!win || win.isDestroyed()) return;
+            try {
+                win.show();
+                if (options.alwaysOnTop) win.setAlwaysOnTop?.(true);
+            } catch { /* closed already */ }
+        };
+        this._window.once?.('ready-to-show', reveal);
+        // Belt and braces: `ready-to-show` can fail to fire (slow/odd GPU
+        // paths), which used to leave the window created-but-invisible.
+        this._revealTimer = setTimeout(reveal, REVEAL_FALLBACK_MS);
+
+        this._window.on('closed', () => {
+            if (this._revealTimer) { clearTimeout(this._revealTimer); this._revealTimer = null; }
+            this._window = null;
         });
-        this._window.on('closed', () => { this._window = null; });
         this._logger.log?.(`[Capture] capture window opened (chroma ${options.backgroundColor})`);
         return this._window;
     }
 
     close() {
+        if (this._revealTimer) { clearTimeout(this._revealTimer); this._revealTimer = null; }
         if (!this.isOpen()) { this._window = null; return false; }
         try { this._window.close(); } catch { /* already gone */ }
         this._window = null;
@@ -165,6 +187,7 @@ module.exports = {
     clampSize,
     DEFAULT_CHROMA,
     DEFAULT_TITLE,
+    REVEAL_FALLBACK_MS,
     DEFAULT_WIDTH,
     DEFAULT_HEIGHT,
     MIN_SIZE,

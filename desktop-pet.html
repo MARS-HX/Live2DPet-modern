@@ -265,8 +265,8 @@
                 document.documentElement.style.setProperty('--capture-color', color);
                 document.body.style.background = color;
                 document.body.classList.add('capture-mode');
-                // No positioning/dragging inside a capture surface.
-                document.documentElement.style.webkitAppRegion = 'no-drag';
+                // Stay draggable (inherited from html/body) so the user can move
+                // this always-on-top window out of the way.
             } catch (e) { /* never block the pet from rendering */ }
         })();
 
