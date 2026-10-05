@@ -349,6 +349,25 @@
             <button class="btn btn-secondary" id="btn-obs-bs-toggle" data-i18n="obs.bsEnable">Enable</button>
         </div>
         <div class="status" id="obs-bs-msg"></div>
+        <p class="model-info" style="font-size:12px;margin-top:10px;" data-i18n="obs.fitTitle">Size and position of the pet inside the source</p>
+        <label data-i18n="obs.fitScale">Scale (%)</label>
+        <input type="number" id="obs-fit-scale" min="10" max="500" step="5" placeholder="100">
+        <div style="display:flex;gap:8px;">
+            <div style="flex:1;">
+                <label data-i18n="obs.fitX">Offset X (px)</label>
+                <input type="number" id="obs-fit-x" min="-4000" max="4000" step="5" placeholder="0">
+            </div>
+            <div style="flex:1;">
+                <label data-i18n="obs.fitY">Offset Y (px)</label>
+                <input type="number" id="obs-fit-y" min="-4000" max="4000" step="5" placeholder="0">
+            </div>
+        </div>
+        <div class="btn-row">
+            <button class="btn btn-primary" id="btn-obs-fit-apply" data-i18n="obs.fitApply">Apply live</button>
+            <button class="btn btn-secondary" id="btn-obs-fit-reset" data-i18n="obs.fitReset">Reset</button>
+        </div>
+        <div class="status" id="obs-fit-msg"></div>
+        <p class="model-info" style="font-size:11px;color:#888;" data-i18n="obs.fitHint">Changes apply to OBS immediately — no need to re-add the source. Negative Y moves the pet up, positive moves it down.</p>
         <ol class="model-info" style="font-size:12px;line-height:1.7;padding-left:18px;">
             <li data-i18n="obs.bsStep1">In OBS: Sources → ＋ → <b>Browser</b>.</li>
             <li data-i18n="obs.bsStep2">Paste the URL above, set the size (for example 400 × 600), then OK.</li>

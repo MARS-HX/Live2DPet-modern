@@ -1,6 +1,6 @@
 {
   "name": "live2dpet",
-  "version": "1.6.4",
+  "version": "1.6.5",
   "description": "AI desktop pet companion with multi-backend TTS, dual mode, enhanced memory",
   "author": "x380kkm",
   "main": "main.js",

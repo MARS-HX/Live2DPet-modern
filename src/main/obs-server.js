@@ -49,6 +49,26 @@ function sanitizeConfig(value, depth = 0) {
     return out;
 }
 
+/** Bounds for the in-frame transform, so a bad value cannot blank the pet. */
+const TRANSFORM_LIMITS = { minScale: 0.1, maxScale: 5, maxOffset: 4000 };
+
+/**
+ * Normalize the pet's size/position inside the browser source.
+ * `scale` is a multiplier (1 = as rendered), x/y are pixels of offset.
+ */
+function normalizeTransform(input = {}) {
+    const num = (v, fallback) => {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : fallback;
+    };
+    const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
+    return {
+        scale: clamp(num(input.scale, 1), TRANSFORM_LIMITS.minScale, TRANSFORM_LIMITS.maxScale),
+        x: Math.round(clamp(num(input.x, 0), -TRANSFORM_LIMITS.maxOffset, TRANSFORM_LIMITS.maxOffset)),
+        y: Math.round(clamp(num(input.y, 0), -TRANSFORM_LIMITS.maxOffset, TRANSFORM_LIMITS.maxOffset)),
+    };
+}
+
 /**
  * Resolve a request path inside a root directory, refusing anything that
  * escapes it. Returns null when the path is not safe.
@@ -202,4 +222,4 @@ function createObsServer(deps = {}) {
     };
 }
 
-module.exports = { createObsServer, sanitizeConfig, resolveWithin, MIME, SECRET_KEY_RE };
+module.exports = { createObsServer, sanitizeConfig, resolveWithin, normalizeTransform, TRANSFORM_LIMITS, MIME, SECRET_KEY_RE };

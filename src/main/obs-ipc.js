@@ -12,6 +12,7 @@
 'use strict';
 
 const { OBS_COMPAT_SWITCHES } = require('./obs-mode');
+const { normalizeTransform } = require('./obs-server');
 
 function registerObsIPC(ctx, ipcMain, deps) {
     const { configManager, app } = deps;
@@ -64,9 +65,13 @@ function registerObsIPC(ctx, ipcMain, deps) {
         try {
             const raw = (await configManager.loadConfigFile()).obs || {};
             const bs = raw.browserSource || {};
-            return { enabled: bs.enabled !== false, port: Number.isFinite(bs.port) ? bs.port : 0 };
+            return {
+                enabled: bs.enabled !== false,
+                port: Number.isFinite(bs.port) ? bs.port : 0,
+                transform: normalizeTransform(bs.transform || {}),
+            };
         } catch {
-            return { enabled: true, port: 0 };
+            return { enabled: true, port: 0, transform: normalizeTransform({}) };
         }
     }
 
@@ -76,12 +81,29 @@ function registerObsIPC(ctx, ipcMain, deps) {
         return {
             enabled: cfg.enabled,
             preferredPort: cfg.port,
+            transform: cfg.transform,
             running: st.running,
             port: st.port,
             clients: st.clients,
             url: st.url,
         };
     };
+
+    /**
+     * Save the pet's size/position inside the browser source and push it to
+     * every connected OBS browser source, so tuning is live — no need to
+     * re-paste the URL.
+     */
+    ipcMain.handle('obs-transform-set', async (_event, patch) => {
+        try {
+            const t = normalizeTransform(patch || {});
+            await configManager.saveConfigFile({ obs: { browserSource: { transform: t } } });
+            if (ctx.obsBrowserSource) ctx.obsBrowserSource.mirror('obs-transform', [t]);
+            return { success: true, transform: t };
+        } catch (e) {
+            return { success: false, error: e.message };
+        }
+    });
 
     ipcMain.handle('obs-server-get', async () => browserPayload(await readBrowserSourceConfig()));
 

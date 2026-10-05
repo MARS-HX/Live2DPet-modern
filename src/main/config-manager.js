@@ -75,7 +75,10 @@ function getDefaultObsConfig() {
         // involved and transparency works properly. This is the reliable path.
         browserSource: {
             enabled: true,
-            port: 0            // 0 = pick a free port automatically
+            port: 0,           // 0 = pick a free port automatically
+            // Where the pet sits inside the source rectangle, and how big it is.
+            // OBS moves the rectangle; this moves the pet within it.
+            transform: { scale: 1, x: 0, y: 0 }
         }
     };
 }

@@ -119,6 +119,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     obsServerGet: () => ipcRenderer.invoke('obs-server-get'),
     obsServerStart: (patch) => ipcRenderer.invoke('obs-server-start', patch),
     obsServerStop: () => ipcRenderer.invoke('obs-server-stop'),
+    // 桌宠在浏览器源画面里的位置与大小（实时推送到 OBS）
+    obsTransformSet: (patch) => ipcRenderer.invoke('obs-transform-set', patch),
 
     // ========== 语音识别 (ASR) - 云端/旧版 ==========
     TRANSCRIBE_AUDIO: (audioBuffer, mimeType) => ipcRenderer.invoke('TRANSCRIBE_AUDIO', audioBuffer, mimeType),

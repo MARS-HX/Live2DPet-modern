@@ -17,6 +17,39 @@
     let socket = null;
     let ready = false;
 
+    // ---- in-frame size / position ----------------------------------------
+    // OBS can move and scale the source rectangle, but the pet's own placement
+    // inside that rectangle is ours to control. Applied as a CSS transform on
+    // the pet container, so it never has to touch the Live2D adapter.
+    function currentTransform() {
+        const q = new URLSearchParams(location.search);
+        const fromUrl = {
+            scale: q.get('scale'),
+            x: q.get('x'),
+            y: q.get('y'),
+        };
+        const cfg = (configCache && configCache.obs && configCache.obs.browserSource) || {};
+        // URL wins, then saved settings, then identity.
+        const pick = (k, fallback) => (fromUrl[k] !== null && fromUrl[k] !== '' ? fromUrl[k] : (cfg[k] !== undefined ? cfg[k] : fallback));
+        return {
+            scale: Number(pick('scale', 1)) || 1,
+            x: Number(pick('x', 0)) || 0,
+            y: Number(pick('y', 0)) || 0,
+        };
+    }
+
+    function applyTransform(t) {
+        const el = document.getElementById('pet-container');
+        if (!el) return false;
+        el.style.transformOrigin = '50% 50%';
+        el.style.transform = `translate(${t.x}px, ${t.y}px) scale(${t.scale})`;
+        return true;
+    }
+
+    function refreshTransform() {
+        try { applyTransform(currentTransform()); } catch (e) { console.warn('[OBS shim] transform failed:', e.message); }
+    }
+
     function emit(channel, args) {
         const set = listeners.get(channel);
         if (!set || !set.size) {
@@ -60,6 +93,18 @@
             if (!msg || !msg.channel) return;
             if (msg.channel === 'init') {
                 configCache = msg.args && msg.args[0];
+                refreshTransform();
+                return;
+            }
+            if (msg.channel === 'obs-transform') {
+                // Live update from the settings window: changes show up in OBS
+                // immediately, with no need to re-paste the URL.
+                const t = (msg.args && msg.args[0]) || {};
+                applyTransform({
+                    scale: Number(t.scale) || 1,
+                    x: Number(t.x) || 0,
+                    y: Number(t.y) || 0,
+                });
                 return;
             }
             emit(msg.channel, msg.args || []);
@@ -85,6 +130,7 @@
     api_.loadConfig = async () => {
         if (configCache) return configCache;
         configCache = await api('/api/config');
+        refreshTransform();
         return configCache;
     };
     api_.saveConfig = async () => ({ success: false, error: 'read_only_browser_source' });
@@ -123,4 +169,17 @@
     api_.isBrowserSource = true;
 
     window.electronAPI = api_;
+
+    // Re-apply the transform whenever the page re-lays-out, and make sure it
+    // lands even if the container is created after this script runs.
+    window.addEventListener('resize', refreshTransform);
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', refreshTransform);
+    } else {
+        refreshTransform();
+    }
+    let tries = 0;
+    const settle = setInterval(() => {
+        if (applyTransform(currentTransform()) || ++tries > 30) clearInterval(settle);
+    }, 250);
 })();

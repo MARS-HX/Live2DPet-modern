@@ -1402,6 +1402,14 @@ async function loadObsBrowserSource() {
         const st = await window.electronAPI.obsServerGet();
         if (input) input.value = st.url || '';
         if (btn) btn.textContent = t(st.running ? 'obs.bsDisable' : 'obs.bsEnable');
+        // Reflect the saved in-frame transform (percent for the user).
+        const tr = st.transform || { scale: 1, x: 0, y: 0 };
+        const s = document.getElementById('obs-fit-scale');
+        if (s && document.activeElement !== s) s.value = Math.round(tr.scale * 100);
+        const xi = document.getElementById('obs-fit-x');
+        if (xi && document.activeElement !== xi) xi.value = tr.x;
+        const yi = document.getElementById('obs-fit-y');
+        if (yi && document.activeElement !== yi) yi.value = tr.y;
         if (!line) return;
         if (st.running) {
             line.textContent = '🟢 ' + t('obs.bsRunning') + ' · ' + st.url
@@ -1415,6 +1423,26 @@ async function loadObsBrowserSource() {
         if (line) { line.textContent = t('obs.statusFailed') + e.message; line.className = 'status error'; }
     }
 }
+
+async function applyObsFit(reset = false) {
+    const msg = document.getElementById('obs-fit-msg');
+    const scalePct = reset ? 100 : parseInt(document.getElementById('obs-fit-scale').value, 10);
+    const x = reset ? 0 : parseInt(document.getElementById('obs-fit-x').value, 10);
+    const y = reset ? 0 : parseInt(document.getElementById('obs-fit-y').value, 10);
+    const res = await window.electronAPI.obsTransformSet({
+        scale: (Number.isFinite(scalePct) ? Math.min(500, Math.max(10, scalePct)) : 100) / 100,
+        x: Number.isFinite(x) ? x : 0,
+        y: Number.isFinite(y) ? y : 0,
+    });
+    if (msg) {
+        msg.textContent = res && res.success ? t('obs.fitApplied') : ((res && res.error) || t('obs.saveFailed'));
+        msg.className = res && res.success ? 'status success' : 'status error';
+    }
+    await loadObsBrowserSource();
+}
+
+document.getElementById('btn-obs-fit-apply')?.addEventListener('click', () => applyObsFit(false));
+document.getElementById('btn-obs-fit-reset')?.addEventListener('click', () => applyObsFit(true));
 
 document.getElementById('btn-obs-bs-toggle')?.addEventListener('click', async () => {
     const msg = document.getElementById('obs-bs-msg');

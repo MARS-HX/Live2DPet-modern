@@ -10,7 +10,41 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const { createObsServer, sanitizeConfig, resolveWithin } = require('../src/main/obs-server');
+const { createObsServer, sanitizeConfig, resolveWithin, normalizeTransform } = require('../src/main/obs-server');
+
+describe('normalizeTransform', () => {
+    it('defaults to no change', () => {
+        assert.deepStrictEqual(normalizeTransform(), { scale: 1, x: 0, y: 0 });
+        assert.deepStrictEqual(normalizeTransform({}), { scale: 1, x: 0, y: 0 });
+    });
+
+    it('accepts a scale and offsets', () => {
+        assert.deepStrictEqual(normalizeTransform({ scale: 1.5, x: 20, y: -40 }), { scale: 1.5, x: 20, y: -40 });
+    });
+
+    it('reads numeric strings (config round-trips through JSON)', () => {
+        assert.deepStrictEqual(normalizeTransform({ scale: '0.8', x: '12', y: '-5' }), { scale: 0.8, x: 12, y: -5 });
+    });
+
+    it('clamps instead of letting a bad value blank the pet', () => {
+        assert.strictEqual(normalizeTransform({ scale: 0 }).scale, 0.1);
+        assert.strictEqual(normalizeTransform({ scale: 999 }).scale, 5);
+        assert.strictEqual(normalizeTransform({ x: 99999 }).x, 4000);
+        assert.strictEqual(normalizeTransform({ y: -99999 }).y, -4000);
+    });
+
+    it('falls back for garbage input', () => {
+        assert.deepStrictEqual(normalizeTransform({ scale: 'big', x: null, y: undefined }), { scale: 1, x: 0, y: 0 });
+        // Infinity is not finite, so it falls back to 0 (no offset) rather than
+        // clamping to the maximum — safer than flinging the pet off-screen.
+        assert.deepStrictEqual(normalizeTransform({ scale: NaN, x: Infinity, y: 'abc' }), { scale: 1, x: 0, y: 0 });
+    });
+
+    it('rounds offsets to whole pixels', () => {
+        assert.strictEqual(normalizeTransform({ x: 10.6 }).x, 11);
+        assert.strictEqual(normalizeTransform({ y: -10.4 }).y, -10);
+    });
+});
 
 describe('sanitizeConfig', () => {
     it('blanks every credential-shaped field', () => {
