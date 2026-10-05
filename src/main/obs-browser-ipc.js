@@ -75,24 +75,38 @@ function registerObsBrowserSource(ctx, deps) {
         installMirror(ctx.chatBubbleWindow);
     }
 
+    let starting = null;
+
     async function start(preferredPort = 0) {
-        if (server && server.running) return { port: server.port, url: server.url };
-        server = createObsServer({
-            http, fs, path, ws, rootDir: basePath,
-            getConfig, getModelDir: resolveModelDir, logger,
-        });
+        if (server && server.running) return { port: server.port, url: server.url() };
+        // Join an in-flight start instead of binding a second port: `server` is
+        // assigned before listen() completes, so a concurrent call used to
+        // create a second server and leak the first one on its own port.
+        if (starting) return starting;
+        starting = (async () => {
+            if (server) { try { server.close(); } catch { /* ignore */ } server = null; }
+            server = createObsServer({
+                http, fs, path, ws, rootDir: basePath,
+                getConfig, getModelDir: resolveModelDir, logger,
+            });
+            try {
+                await server.start(preferredPort);
+            } catch (e) {
+                logger.warn?.(`[OBS] browser source failed to start: ${e.message}`);
+                server = null;
+                return { error: e.message };
+            }
+            if (!mirrorInstalled) {
+                installMirrors();
+                mirrorInstalled = true;
+            }
+            return { port: server.port, url: server.url() };
+        })();
         try {
-            await server.start(preferredPort);
-        } catch (e) {
-            logger.warn?.(`[OBS] browser source failed to start: ${e.message}`);
-            server = null;
-            return { error: e.message };
+            return await starting;
+        } finally {
+            starting = null;
         }
-        if (!mirrorInstalled) {
-            installMirrors();
-            mirrorInstalled = true;
-        }
-        return { port: server.port, url: server.url };
     }
 
     function stop() {
@@ -112,7 +126,10 @@ function registerObsBrowserSource(ctx, deps) {
             return {
                 running: !!(server && server.running),
                 port: server ? server.port : 0,
-                url: server ? server.url : '',
+                // url() is a METHOD on the server object — calling it matters:
+                // returning the function itself made the IPC payload
+                // un-structured-cloneable ("An object could not be cloned").
+                url: server ? server.url() : '',
                 clients: server ? server.clients : 0,
             };
         },

@@ -1,5 +1,47 @@
 # Changelog
 
+## v1.6.6 — 修复设置页 `obs-server-get` 报错「An object could not be cloned」
+
+### 🐛 根因
+
+Electron 对每个 IPC 返回值做 **structured clone**。`obs-server` 里的 `url` 是一个**方法**，
+而包装层把它当字符串直接塞进了返回值：
+
+```js
+url: server ? server.url : ''      // ← 塞进去的是函数
+```
+
+函数无法被结构化克隆 → 渲染进程收到 `Error: An object could not be cloned`，
+设置页的浏览器源状态、地址、位置/大小面板全部失效。`start()` 里还有两处同样写法。
+
+**修复**：三处都改为调用 `server.url()`（`obs-browser-ipc.js`）。
+
+### 🐛 顺带修掉的第二个 bug
+
+排查时发现启动日志出现了**两个浏览器源**（`:2633` 和 `:2666`）：
+
+- `obs-server.js` 的 `running` 以前是 `!!server` —— 只要 `http.Server` 对象建出来就是 true，
+  **而那时 `listen()` 还没绑定端口**。于是并发/重复调用 `start()` 时，
+  第二次调用以为"已在运行"，直接返回了 `port: 0`
+- **修复**：`running` 改为只在 `listen()` 回调里置位的 `listening`；
+  并给 `start()` 加了「合并进行中的启动」保护，重复调用不会再开第二个端口
+
+### 🧪 回归测试
+
+新增 `tests/test-obs-browser-source.js`（8 个），其中关键断言用的就是
+**Electron 会做的那个操作**：
+
+```js
+assert.doesNotThrow(() => structuredClone(status));
+assert.strictEqual(typeof status.url, 'string');
+```
+
+已验证该断言确实能抓住这类 bug（`structuredClone` 对函数抛 `DataCloneError`）。
+另外覆盖：并发 `start()` 只开一个端口、stop 后可重启、
+`running` 只在真正绑定端口后才为 true。
+
+全套 **463 个测试全过**。
+
 ## v1.6.5 — 浏览器源可调「桌宠在画面里的位置与大小」
 
 OBS 里拖动/缩放的是**源的方框**，而桌宠在方框里怎么摆是另一回事。这一版把这件事交给你控制。

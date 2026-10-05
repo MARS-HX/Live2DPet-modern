@@ -251,6 +251,15 @@ Live2DPet-modern/
 
 ## 📋 更新日志
 
+### v1.6.6 — 修复浏览器源设置面板报错
+- **修复 `obs-server-get` 的 `An object could not be cloned`**：
+  返回值里塞进了 `url` **方法**而不是调用结果，Electron 无法结构化克隆 → 面板全部失效
+- **修复重复启动泄漏端口**：`running` 以前只要 `http.Server` 对象存在就为 true
+  （此时还没绑定端口），导致重复调用 `start()` 会开第二个端口；现在只在 `listen()`
+  成功后为 true，并合并进行中的启动
+- 新增 `tests/test-obs-browser-source.js`，直接断言 `structuredClone(status)` 不抛错
+  —— 用的就是 Electron 会做的那个操作,这类 bug 以后不会再溜过去
+
 ### v1.6.5 — 浏览器源可调「桌宠在画面里的位置与大小」
 - **新增三个控制**：缩放（%）、水平偏移、垂直偏移 → 设置 → 集成
 - **改动实时推送到 OBS**：不用重新添加源、不用重新粘贴地址（走 WebSocket 推送）

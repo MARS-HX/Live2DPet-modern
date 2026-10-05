@@ -89,6 +89,7 @@ function createObsServer(deps = {}) {
     let server = null;
     let wss = null;
     let port = 0;
+    let listening = false;      // true only once listen() has actually bound
     const clients = new Set();
 
     function sendJson(res, code, obj) {
@@ -196,6 +197,7 @@ function createObsServer(deps = {}) {
             server.once('error', reject);
             server.listen(preferredPort, '127.0.0.1', () => {
                 port = server.address().port;
+                listening = true;
                 logger.log?.(`[OBS] browser source ready at ${url()}`);
                 resolve({ port, url: url() });
             });
@@ -208,6 +210,7 @@ function createObsServer(deps = {}) {
         if (wss) { try { wss.close(); } catch { /* ignore */ } wss = null; }
         if (server) { try { server.close(); } catch { /* ignore */ } server = null; }
         port = 0;
+        listening = false;
     }
 
     function url() {
@@ -218,7 +221,9 @@ function createObsServer(deps = {}) {
         start, close, broadcast, url,
         get port() { return port; },
         get clients() { return clients.size; },
-        get running() { return !!server; },
+        // Only true once listen() has bound — NOT merely when the http.Server
+        // object exists, otherwise callers see "running" with port 0 mid-start.
+        get running() { return listening; },
     };
 }
 
