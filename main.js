@@ -11,6 +11,16 @@ const http = require('http');
 // 全局启用 Web Speech API（备用，但已禁用 STT）
 app.commandLine.appendSwitch('enable-blink-features', 'SpeechRecognition');
 
+// OBS 兼容模式：必须在 GPU 进程启动前决定，所以同步读一次配置。
+// Chromium 的渲染绕过了 Windows GDI，OBS 读窗口只会得到纯黑；
+// 关掉 GPU 合成后 OBS 才能抓到画面（代价是渲染性能下降，因此做成开关）。
+const { applyObsCompatibility } = require('./src/main/obs-mode');
+const obsMode = applyObsCompatibility(app, { fs, path, app, basePath: __dirname });
+if (obsMode.enabled) {
+    console.log('[OBS] compatibility mode ON —', obsMode.switches.join(', '));
+}
+global.__obsModeActive = obsMode.enabled;
+
 const { AppContext } = require('./src/main/app-context');
 const { createConfigManager } = require('./src/main/config-manager');
 const { createI18nHelper } = require('./src/main/i18n-helper');
@@ -26,6 +36,7 @@ const { registerDefaultAudioIPC } = require('./src/main/default-audio-ipc');
 const { registerModelImport } = require('./src/main/model-import');
 const { registerDshIPC } = require('./src/main/dsh-ipc');
 const { registerBilibiliIPC } = require('./src/main/bilibili-ipc');
+const { registerObsIPC } = require('./src/main/obs-ipc');
 const { createPathUtils } = require('./src/utils/path-utils');
 const { TTSService } = require('./src/core/tts-service');
 
@@ -58,6 +69,10 @@ registerDshIPC(ctx, ipcMain, { configManager, app, path });
 
 // ========== Bilibili live danmaku ==========
 registerBilibiliIPC(ctx, ipcMain, { configManager, app });
+
+// ========== OBS 兼容模式 ==========
+ctx.obsModeActive = !!global.__obsModeActive;
+registerObsIPC(ctx, ipcMain, { configManager, app });
 
 // ========== 麦克风权限（保留，但 STT 未使用） ==========
 ipcMain.handle('REQUEST_MICROPHONE_ACCESS', async () => {

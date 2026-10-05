@@ -109,6 +109,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onBiliDanmaku: (cb) => ipcRenderer.on('bili://danmaku', (e, data) => cb(data)),
     onBiliStatus: (cb) => ipcRenderer.on('bili://status', (e, data) => cb(data)),
 
+    // ========== OBS 兼容模式 ==========
+    // Chromium 绕过 Windows GDI，OBS 读窗口会得到纯黑；关掉 GPU 合成才能被抓到。
+    obsModeGet: () => ipcRenderer.invoke('obs-mode-get'),
+    obsModeSet: (patch) => ipcRenderer.invoke('obs-mode-set', patch),
+    appRestart: () => ipcRenderer.invoke('app-restart'),
+
     // ========== 语音识别 (ASR) - 云端/旧版 ==========
     TRANSCRIBE_AUDIO: (audioBuffer, mimeType) => ipcRenderer.invoke('TRANSCRIBE_AUDIO', audioBuffer, mimeType),
 

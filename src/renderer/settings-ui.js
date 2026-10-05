@@ -1391,6 +1391,52 @@ document.getElementById('btn-disconnect-bili')?.addEventListener('click', async 
     await loadBiliSettings();
 });
 
+// ========== OBS 兼容模式 ==========
+
+async function loadObsMode() {
+    if (!window.electronAPI || !window.electronAPI.obsModeGet) return;
+    const line = document.getElementById('obs-mode-status');
+    try {
+        const st = await window.electronAPI.obsModeGet();
+        const box = document.getElementById('obs-compatible');
+        if (box) box.checked = !!st.compatible;
+        if (!line) return;
+        if (st.active) {
+            line.textContent = '🟢 ' + t('obs.on') + ' · ' + (st.switches || []).join(', ');
+            line.className = 'status success';
+        } else if (st.compatible) {
+            line.textContent = '⚠️ ' + t('obs.needsRestart');
+            line.className = 'status error';
+        } else {
+            line.textContent = t('obs.off');
+            line.className = 'status';
+        }
+    } catch (e) {
+        if (line) { line.textContent = t('obs.statusFailed') + e.message; line.className = 'status error'; }
+    }
+}
+
+document.getElementById('btn-obs-save')?.addEventListener('click', async () => {
+    const status = document.getElementById('obs-save-status');
+    const compatible = !!document.getElementById('obs-compatible')?.checked;
+    const res = await window.electronAPI.obsModeSet({ compatible });
+    if (res && res.success) {
+        status.textContent = res.restartRequired ? t('obs.savedRestart') : t('obs.saved');
+        status.className = 'status success';
+    } else {
+        status.textContent = (res && res.error) || t('obs.saveFailed');
+        status.className = 'status error';
+    }
+    await loadObsMode();
+});
+
+document.getElementById('btn-obs-restart')?.addEventListener('click', async () => {
+    const status = document.getElementById('obs-save-status');
+    status.textContent = t('obs.restarting');
+    status.className = 'status';
+    await window.electronAPI.appRestart();
+});
+
 // ========== Max Tokens Multiplier ==========
 
 function loadTokenMultiplierUI(multiplier) {
@@ -1661,6 +1707,8 @@ loadDshSettings();
 loadCompanionSettings();
 // Bilibili live danmaku panel
 loadBiliSettings();
+// OBS compatibility mode
+loadObsMode();
 
 // ========== 酒馆预设管理 ==========
 const BUILTIN_PRESETS = ['fantasy-tavern', 'cyber-bar', 'xianxia-tavern'];

@@ -340,14 +340,25 @@
     </div>
     <div class="card">
         <h2 data-i18n="obs.title">Use the pet in OBS</h2>
-        <p class="model-info" data-i18n="obs.desc">The pet window is transparent — that is what makes it look right on your desktop. OBS's “Window Capture” cannot read transparent windows (it returns black), so use “Game Capture” instead: it captures the pet's graphics directly and keeps the transparency.</p>
+        <p class="model-info" data-i18n="obs.desc">OBS usually captures this window as a black rectangle: Chromium renders through a path that bypasses the Windows GDI, so OBS cannot read it. Turning on compatibility mode below fixes that, at the cost of some rendering performance.</p>
+        <label style="display:flex;align-items:center;gap:8px;">
+            <input type="checkbox" id="obs-compatible">
+            <span data-i18n="obs.compatible">OBS compatibility mode (restart required)</span>
+        </label>
+        <div class="status" id="obs-mode-status"></div>
+        <div class="btn-row">
+            <button class="btn btn-primary" id="btn-obs-save" data-i18n="obs.save">Save</button>
+            <button class="btn btn-secondary" id="btn-obs-restart" data-i18n="obs.restart">Restart now</button>
+        </div>
+        <div class="status" id="obs-save-status"></div>
+        <hr style="border:none;border-top:1px solid rgba(128,128,128,0.25);margin:12px 0;">
+        <p class="model-info" style="font-size:12px;" data-i18n="obs.howtoTitle">After restarting, add the pet in OBS:</p>
         <ol class="model-info" style="font-size:12px;line-height:1.7;padding-left:18px;">
-            <li data-i18n="obs.step1">In OBS: Sources → ＋ → <b>Game Capture</b> (游戏采集). Do not use Window Capture.</li>
-            <li data-i18n="obs.step2">Set Mode to “Capture specific window”, then pick the window titled <b>Desktop Pet</b>.</li>
-            <li data-i18n="obs.step3">Tick <b>Allow Transparency</b> (允许透明度). No green screen or chroma key is needed.</li>
+            <li data-i18n="obs.step1">Sources → ＋ → <b>Window Capture</b> → pick the window titled <b>Desktop Pet</b>.</li>
+            <li data-i18n="obs.step2">If it is still black, try <b>Game Capture</b> instead and tick <b>Allow Transparency</b>.</li>
+            <li data-i18n="obs.step3">Last resort: <b>Display Capture</b> — the pet appears exactly as it does on screen.</li>
         </ol>
-        <p class="model-info" style="font-size:11px;color:#888;" data-i18n="obs.trouble">Black or empty? Run OBS as administrator — Game Capture needs it for some apps. If it still fails, use Display Capture (显示器采集) instead; the pet will appear exactly as it does on screen.</p>
-        <p class="model-info" style="font-size:11px;color:#888;" data-i18n="obs.why">Why Window Capture fails: a transparent window is a “layered” window on Windows, and OBS reads it as pure black. This is a system limitation, not a settings problem.</p>
+        <p class="model-info" style="font-size:11px;color:#888;" data-i18n="obs.trouble">Compatibility mode lowers rendering performance a little. Turn it off when you are not streaming.</p>
     </div>
     <div class="card">
         <h2 data-i18n="bili.title">Bilibili Live Danmaku</h2>

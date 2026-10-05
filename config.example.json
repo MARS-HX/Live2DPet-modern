@@ -251,5 +251,8 @@
   "screenshotInterval": 60,
   "appMode": "tavern",
   "firstRun": true,
-  "canvasYRatio": 0.77
+  "canvasYRatio": 0.77,
+  "obs": {
+    "compatible": false
+  }
 }

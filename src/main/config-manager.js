@@ -59,7 +59,18 @@ function getDefaultConfig() {
         // Game companion: let the pet watch and accompany gameplay.
         companion: getDefaultCompanionConfig(),
         // Bilibili live danmaku: let the pet react to a live room's chat.
-        bilibili: getDefaultBilibiliConfig()
+        bilibili: getDefaultBilibiliConfig(),
+        // OBS compatibility mode: makes the pet window readable by OBS.
+        obs: getDefaultObsConfig()
+    };
+}
+
+function getDefaultObsConfig() {
+    return {
+        // Chromium bypasses the Windows GDI, so OBS captures a black rectangle.
+        // Turning off GPU compositing puts it back on a capturable path.
+        // Needs an app restart; costs some rendering performance.
+        compatible: false
     };
 }
 
@@ -167,6 +178,7 @@ function createConfigManager(app, options = {}) {
                 dsh: { ...defaults.dsh, ...(raw.dsh || {}) },
                 companion: { ...defaults.companion, ...(raw.companion || {}) },
                 bilibili: { ...defaults.bilibili, ...(raw.bilibili || {}) },
+                obs: { ...defaults.obs, ...(raw.obs || {}) },
                 enhance: {
                     ...defaults.enhance,
                     ...(raw.enhance || {}),
@@ -202,6 +214,7 @@ function createConfigManager(app, options = {}) {
             if (data.dsh) merged.dsh = { ...(existing.dsh || {}), ...data.dsh };
             if (data.companion) merged.companion = { ...(existing.companion || {}), ...data.companion };
             if (data.bilibili) merged.bilibili = { ...(existing.bilibili || {}), ...data.bilibili };
+            if (data.obs) merged.obs = { ...(existing.obs || {}), ...data.obs };
             if (data.enhance) {
                 merged.enhance = { ...(existing.enhance || {}), ...data.enhance };
                 if (data.enhance.memory) merged.enhance.memory = { ...(existing.enhance?.memory || {}), ...data.enhance.memory };
@@ -227,6 +240,7 @@ module.exports = {
     getDefaultDshConfig,
     getDefaultCompanionConfig,
     getDefaultBilibiliConfig,
+    getDefaultObsConfig,
     migrateConfig,
     CURRENT_CONFIG_VERSION
 };

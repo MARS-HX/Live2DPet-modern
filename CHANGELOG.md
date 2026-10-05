@@ -1,5 +1,62 @@
 # Changelog
 
+## v1.6.3 — 修复 OBS 抓不到桌宠的真正原因
+
+> v1.6.1 / v1.6.2 都还在围着「透明窗口」打转。这一版才是根因。
+
+### 🎯 根因：Chromium 的渲染绕过了 Windows GDI
+
+OBS 读窗口内容依赖 Windows GDI 那条路，而 **Electron/Chromium 用自己的合成路径把这条路绕过去了**，
+所以 OBS 只能读到一片黑 —— 这解释了为什么：
+
+- 窗口采集是黑的
+- **游戏采集**也是黑的
+- 采集方式选 Automatic / BitBlt / WGC 全都是黑的
+- 换成不透明的抠像窗口就能抓到（因为那是另一种呈现方式）
+
+> 佐证：[electron/electron#16955](https://github.com/electron/electron/issues/16955)
+> —— OBS 开发者原话：「nothing I can do about capturing browser-based applications due to
+> that render technique they're all using which **bypasses the windows GDI**」
+
+### ✅ 修复：新增「OBS 兼容模式」
+
+启动时关掉 Chromium 的 GPU 合成：
+
+```js
+app.commandLine.appendSwitch('disable-gpu-compositing');
+```
+
+这是其他 Electron 应用验证过的做法（它们叫它 streamer mode）。
+
+| | |
+|---|---|
+| 打开方式 | 设置 → 集成 → 「OBS 兼容模式」→ 勾选 → 保存 → **立即重启** |
+| 生效判据 | 启动日志出现 `[OBS] compatibility mode ON — disable-gpu-compositing, …` |
+| 界面反馈 | 显示开关**当前是否真的生效**、是否需要重启 |
+| 代价 | 渲染性能略降 —— 不直播时可以关掉 |
+
+> 命令行开关只能在进程启动时决定，所以改完必须重启；界面上直接给了「立即重启」按钮。
+
+### 也可以临时验证（不改设置）
+
+```bash
+node launch.js --disable-gpu-compositing     # 源码运行
+Live2DPet.exe --disable-gpu-compositing      # 便携版
+```
+
+### 附带的一件事
+
+兼容模式打开后，OBS 里直接用 **窗口采集** 抓 `Desktop Pet` 就行；
+若仍是黑的，再试 **游戏采集 + 允许透明度**；最后兜底用 **显示器采集**。
+
+采集的是**桌宠本体窗口** —— 功能完整、不遮挡屏幕、不需要绿幕、不需要任何额外窗口。
+
+### 新增测试
+
+`tests/test-obs-mode.js`（11 个）：开关解析、只接受显式 `true`、
+不泄漏共享数组、配置文件缺失/损坏时的降级、打包版优先 userData、
+以及开关确实被 append 到命令行。
+
 ## v1.6.2 — 改用正确的 OBS 采集方式（移除多余的采集窗口）
 
 > 这是对 v1.6.0 / v1.6.1 中 OBS 方案的**方向纠正**。
