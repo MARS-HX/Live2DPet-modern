@@ -1,16 +1,21 @@
 # 离线语音识别 — 实现笔记
 
-> **结论（已验证）**：走**原生 `libvosk.dll` + `koffi`** 的路线**完全跑通**。
-> 真实中文语音（Windows 自带 zh-CN 语音合成生成）→ 本地模型识别 → 正确文字，
-> **全程离线、不联网、不需要 API Key**：
+> **结论（已端到端验证）**：走**原生 `libvosk.dll` + `koffi`** 的路线**完全跑通**，
+> 而且**整条生产链路**都被验证过 —— 不是分层验证，是端到端：
 >
 > ```
-> expected : 你好世界，这是一个语音识别测试
-> heard    : 你好 世界 这 是一个 语音识别 测试
-> matched  : yes
+> bridge present : function
+> asr status     : nativeInstalled: true, modelInstalled: true
+> capture start  : {"ok":true}
+> [ASR] heard: 你好 世界 这 是 一个 语音识别 测试 ...
+> RESULT: END-TO-END WORKS — full offline chain produced text
 > ```
 >
-> WASM 那条路（`vosk-browser`）已在第 4 条记录的 `FS error` 处放弃 —— 详见下文。
+> 链路：`getUserMedia` → `AudioWorklet` → 重采样 16 kHz → IPC →
+> `AsrSession` → 原生 libvosk → 文字回传渲染进程。
+> **全程离线、不联网、不需要 API Key。**
+>
+> 验证脚本：`verify-asr-offline.js`（见文末「如何复现验证」）。
 
 本文记录为实现「完全离线的本地语音识别」而**实测**出来的约束。
 每一条都是探针跑出来的结果，不是推测；踩过的坑写在这里，避免重复排查。
@@ -196,3 +201,41 @@ heard    : 你好 世界 这 是一个 语音识别 测试
 
 集成测试在**检测到本机已安装原生库+模型时才运行**（不会让测试套件依赖 60 MB 下载），
 本机实测 **13 个用例全过、0 跳过**（即真的跑了真实模型）。
+
+---
+
+## 如何复现端到端验证
+
+`verify-asr-offline.js` 利用 Chromium 的「用 WAV 文件冒充麦克风」能力
+（`--use-file-for-fake-audio-capture`），把**整条生产链路**跑一遍 ——
+不需要人对着麦克风说话，也不需要联网：
+
+```bash
+# 1) 本地合成一句中文语音（Windows 自带，离线）
+#    用 System.Speech 输出 16kHz / 单声道 / 16bit WAV
+
+# 2) 跑端到端验证
+node_modules/electron/dist/electron.exe verify-asr-offline.js <wav路径> "期望文本"
+```
+
+它加载的是**真实的生产代码**：`registerAsrIPC` + `preload.js` +
+`src/core/pcm-util.js` + `src/renderer/offline-asr.js`，
+只有音源是合成的。任何一环坏掉都会在这里暴露。
+
+> 注意：脚本里必须 `app.setName('live2dpet')`。
+> 直接以裸脚本运行 Electron 时 `app.getName()` 是 `Electron`，
+> `userData` 会指到别的目录，于是明明装好的引擎会被报成「未安装」——
+> 这个坑我踩过一次，排查方向完全跑偏。
+
+### 麦克风权限（已验证）
+
+应用页面走 `file://`，实测在该上下文下：
+
+```
+isSecureContext : true
+navigator.mediaDevices.getUserMedia : 存在
+实际请求捕获      : {"ok":true,"tracks":1}
+```
+
+即 `file://` 被 Chromium 视为可信来源，麦克风可用；
+`main.js` 里已有 `setPermissionRequestHandler` 放行 `media`。
