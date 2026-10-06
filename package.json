@@ -20,7 +20,8 @@
   },
   "devDependencies": {
     "electron": "^42.4.0",
-    "electron-builder": "^26.15.3"
+    "electron-builder": "^26.15.3",
+    "vosk-browser": "^0.0.8"
   },
   "overrides": {
     "node-gyp": "^13.0.0",
