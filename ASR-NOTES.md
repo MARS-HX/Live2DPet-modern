@@ -1,5 +1,17 @@
 # 离线语音识别 — 实现笔记
 
+> **结论（已验证）**：走**原生 `libvosk.dll` + `koffi`** 的路线**完全跑通**。
+> 真实中文语音（Windows 自带 zh-CN 语音合成生成）→ 本地模型识别 → 正确文字，
+> **全程离线、不联网、不需要 API Key**：
+>
+> ```
+> expected : 你好世界，这是一个语音识别测试
+> heard    : 你好 世界 这 是一个 语音识别 测试
+> matched  : yes
+> ```
+>
+> WASM 那条路（`vosk-browser`）已在第 4 条记录的 `FS error` 处放弃 —— 详见下文。
+
 本文记录为实现「完全离线的本地语音识别」而**实测**出来的约束。
 每一条都是探针跑出来的结果，不是推测；踩过的坑写在这里，避免重复排查。
 
@@ -111,3 +123,63 @@ session       : persistent = true
   （构建配置里已为 koffi 配好 `asarUnpack`）
 
 考虑到 A 已经在一个不维护的库上卡了两轮，**B 的成功率明显更高**。
+
+---
+
+## ✅ 最终采用：B（原生库 + koffi）— 已验证可用
+
+### 组件
+
+| 组件 | 说明 |
+|------|------|
+| `libvosk.dll` | 来自 `vosk-win64-0.3.45.zip`（GitHub release，14.2 MB） |
+| 随附 MinGW 运行时 | `libstdc++-6.dll`(25 MB) / `libgcc_s_seh-1.dll` / `libwinpthread-1.dll` —— **必须一起放**，否则 dll 加载失败 |
+| 模型 | 复用已有下载器装好的 `vosk-model-small-cn-0.22` |
+| 绑定 | `koffi`（项目**本来就依赖**，原用于 VOICEVOX） |
+
+落盘位置：`<userData>/vosk-native/lib/vosk-win64-0.3.45/`（下载解压**复用了第①②步的代码**）
+
+### 绑定的 C API（签名取自随包 `vosk_api.h`）
+
+```
+void            vosk_set_log_level(int)
+VoskModel*      vosk_model_new(const char* model_path)
+void            vosk_model_free(VoskModel*)
+VoskRecognizer* vosk_recognizer_new(VoskModel*, float sample_rate)
+int             vosk_recognizer_accept_waveform(VoskRecognizer*, const char* data, int length)
+const char*     vosk_recognizer_result(VoskRecognizer*)        // 部分结果
+const char*     vosk_recognizer_final_result(VoskRecognizer*)  // 收尾
+void            vosk_recognizer_free(VoskRecognizer*)
+```
+
+音频格式：**16 kHz 单声道 int16 小端**。
+
+### 为什么这条路更好
+
+WASM 路线需要的所有东西，这里**一个都不需要**：
+
+| WASM 需要 | 原生 |
+|---|---|
+| 回环 HTTP 服务 | 不需要（模型直接读磁盘目录） |
+| COOP / COEP 跨域隔离 | 不需要 |
+| `SharedArrayBuffer` | 不需要 |
+| tar + gzip 打包 | 不需要 |
+| Emscripten 虚拟文件系统 / IDBFS | 不需要 |
+| 浏览器安全上下文（麦克风） | 不需要 |
+
+故 `src/main/tar-writer.js` 与 `libs/vosk/vosk.js` 对当前方案已无用
+（tar 打包器的测试仍保留，作为已验证工具）。
+
+### 验证方式
+
+用 **Windows 自带的中文语音合成**（`Microsoft Huihui Desktop`，zh-CN）
+在本地生成 16 kHz 单声道 WAV，再喂给引擎 —— **不需要联网、不需要 API Key**：
+
+```
+wav: 16000 Hz, 1 ch, 16 bit, 150 KB
+expected : 你好世界，这是一个语音识别测试
+heard    : 你好 世界 这 是一个 语音识别 测试
+```
+
+集成测试在**检测到本机已安装原生库+模型时才运行**（不会让测试套件依赖 60 MB 下载），
+本机实测 **13 个用例全过、0 跳过**（即真的跑了真实模型）。

@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node launch.js",
     "dev": "node launch.js --dev",
-    "test": "node --test tests/test-core.js tests/test-enhance.js tests/test-config-manager.js tests/test-crypto-utils.js tests/test-validators.js tests/test-dsh-bridge.js tests/test-game-companion.js tests/test-bilibili-danmaku.js tests/test-live-companion.js tests/test-danmaku-reply-flow.js tests/test-obs-mode.js tests/test-obs-server.js tests/test-obs-browser-source.js tests/test-ipc-channels.js tests/test-zip-extract.js tests/test-asr-model.js tests/test-tar-writer.js",
+    "test": "node --test tests/test-core.js tests/test-enhance.js tests/test-config-manager.js tests/test-crypto-utils.js tests/test-validators.js tests/test-dsh-bridge.js tests/test-game-companion.js tests/test-bilibili-danmaku.js tests/test-live-companion.js tests/test-danmaku-reply-flow.js tests/test-obs-mode.js tests/test-obs-server.js tests/test-obs-browser-source.js tests/test-ipc-channels.js tests/test-zip-extract.js tests/test-asr-model.js tests/test-tar-writer.js tests/test-asr-native.js",
     "build": "electron-builder --win portable",
     "build:dir": "electron-builder --win dir"
   },
