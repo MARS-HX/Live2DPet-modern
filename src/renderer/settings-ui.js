@@ -1606,28 +1606,47 @@ document.getElementById('btn-asr-install')?.addEventListener('click', async () =
     await loadAsrStatus();
 });
 
+// One test at a time. A stale 15 s timer from an earlier click must never be
+// able to stop the capture a later click started.
+let asrTestCapture = null;
+let asrTestToken = 0;
+
 document.getElementById('btn-asr-test')?.addEventListener('click', async () => {
     const msg = document.getElementById('asr-msg');
     const say = (text, cls) => { if (msg) { msg.textContent = text; msg.className = cls || 'status'; } };
-    if (!window.electronAPI?.asrStart) return;
+    if (!window.electronAPI?.asrStatus) return;
+
     const st = await window.electronAPI.asrStatus().catch(() => null);
     if (!st || !st.nativeInstalled || !st.modelInstalled) { say(t('asr.needInstall'), 'status error'); return; }
+    if (!window.OfflineAsr?.OfflineAsrCapture) { say(t('asr.captureUnavailable'), 'status error'); return; }
 
-    // One-shot: listen until the first utterance comes back, then release the mic.
+    // Drop anything still running from a previous click.
+    const token = ++asrTestToken;
+    if (asrTestCapture) { const old = asrTestCapture; asrTestCapture = null; old.stop().catch(() => {}); }
+
     say(t('asr.testing'));
     let done = false;
     const finish = async (text, cls) => {
-        if (done) return;
+        if (done || token !== asrTestToken) return;
         done = true;
-        try { await window.electronAPI.asrStop(); } catch { /* ignore */ }
+        const cap = asrTestCapture;
+        asrTestCapture = null;
+        try { if (cap) await cap.stop(); else await window.electronAPI.asrStop(); } catch { /* ignore */ }
         say(text, cls);
     };
-    window.electronAPI.onAsrResult((text) => {
-        if (text) finish(t('asr.heard') + ' ' + text, 'status success');
+
+    // Exercising the REAL capture path matters: this is the same
+    // microphone -> 16 kHz PCM -> engine chain the pet uses while playing,
+    // so a pass here means hands-free input will work too.
+    const cap = new window.OfflineAsr.OfflineAsrCapture({
+        onText: (text) => { if (text) finish(t('asr.heard') + ' ' + text, 'status success'); },
+        onError: (reason) => finish(t('asr.error') + ' ' + reason, 'status error'),
     });
+    asrTestCapture = cap;
+
+    const res = await cap.start();
+    if (!res.ok) { await finish(t('asr.error') + ' ' + res.reason, 'status error'); return; }
     setTimeout(() => finish(t('asr.heardNothing'), 'status error'), 15000);
-    const r = await window.electronAPI.asrStart();
-    if (!r || !r.success) finish((r && r.error) || t('asr.installFailed'), 'status error');
 });
 
 // Progress pushes from the main process while downloading.
