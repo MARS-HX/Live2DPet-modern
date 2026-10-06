@@ -369,6 +369,53 @@ class DesktopPetSystem {
     }
 
     _startCompanionVoice() {
+        // Prefer the fully offline engine. Electron exposes webkitSpeechRecognition
+        // but has no Google API key behind it, so that path always fails with
+        // "network"; the offline engine needs no network at all.
+        if (typeof window !== 'undefined' && window.OfflineAsr?.OfflineAsrCapture) {
+            this._startOfflineVoice();
+            return;
+        }
+        this._startWebSpeechVoice();
+    }
+
+    /**
+     * Offline capture: microphone -> 16 kHz PCM -> native Vosk in the main
+     * process -> recognised text back here. See src/renderer/offline-asr.js.
+     */
+    _startOfflineVoice() {
+        if (this._offlineCapture) return;
+        try {
+            this._offlineCapture = new window.OfflineAsr.OfflineAsrCapture({
+                onText: (text) => { this._handleCompanionUtterance(text).catch(() => {}); },
+                onError: (reason) => {
+                    console.log(`[CompanionVoice] offline engine unavailable: ${reason}`);
+                    this._companionVoiceFailedReason = reason;
+                    // Assets simply not installed yet: don't retry in a hot loop.
+                    if (reason === 'native_not_installed' || reason === 'model_not_installed') {
+                        this.companionVoiceInput = false;
+                    }
+                    this._companionVoiceActive = false;
+                    this._offlineCapture = null;
+                },
+            });
+        } catch (e) {
+            console.log('[CompanionVoice] offline engine setup failed:', e.message);
+            this._companionVoiceActive = false;
+            return;
+        }
+        this._companionVoiceActive = true;      // optimistic; onError corrects it
+        this._offlineCapture.start().then((res) => {
+            if (!res.ok) {
+                console.log(`[CompanionVoice] offline listening not started: ${res.reason}`);
+                this._companionVoiceActive = false;
+            } else {
+                console.log('[CompanionVoice] listening (offline)');
+            }
+        });
+    }
+
+    _startWebSpeechVoice() {
         const SR = (typeof window !== 'undefined') && (window.SpeechRecognition || window.webkitSpeechRecognition);
         if (!SR) {
             console.log('[CompanionVoice] Web Speech API unavailable; voice input stays off');
@@ -427,6 +474,12 @@ class DesktopPetSystem {
 
     _stopCompanionVoice() {
         this._companionVoiceActive = false;
+        // Offline capture owns the microphone and the engine session.
+        if (this._offlineCapture) {
+            const cap = this._offlineCapture;
+            this._offlineCapture = null;
+            cap.stop().catch(() => {});
+        }
         if (this._companionRecognition) {
             try { this._companionRecognition.onend = null; this._companionRecognition.abort(); } catch (e) {}
             this._companionRecognition = null;
