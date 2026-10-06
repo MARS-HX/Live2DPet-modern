@@ -288,10 +288,27 @@ class DesktopPetSystem {
         }
         this._syncCompanionVoice();
 
+        // Visible diagnostics. The companion is silent by design whenever it
+        // decides not to speak, which makes a healthy setup indistinguishable
+        // from a broken one — so report the decision, throttled.
+        const now = Date.now();
+        if (!this._lastCompanionLogAt || now - this._lastCompanionLogAt > 30000) {
+            this._lastCompanionLogAt = now;
+            const isGame = this.gameCompanion.isGameWindow(win);
+            const busy = !!(this.isPlayingMessage || this.pendingMessage);
+            const sinceLast = this.gameCompanion._lastCommentAt
+                ? Math.round((now - this.gameCompanion._lastCommentAt) / 1000) + 's ago'
+                : 'never';
+            console.log(`[Companion] tick: "${(win && win.title) || ''}" `
+                + `game=${isGame} busy=${busy} lastComment=${sinceLast} `
+                + `interval=${Math.round(this.gameCompanion.commentIntervalMs / 1000)}s`);
+        }
+
         // Never interrupt something the pet is already saying.
         if (this.isPlayingMessage || this.pendingMessage) return;
         this.gameCompanion.noteFocus(win);
         if (!this.gameCompanion.shouldComment(win)) return;
+        console.log(`[Companion] moment due — speaking about "${(win && win.title) || ''}"`);
         this._companionMoment(win).catch(() => {});
     }
 
