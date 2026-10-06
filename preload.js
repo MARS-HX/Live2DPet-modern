@@ -121,6 +121,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // 桌宠在浏览器源画面里的位置与大小（实时推送到 OBS）
     obsTransformSet: (patch) => ipcRenderer.invoke('obs-transform-set', patch),
 
+    // ========== 离线语音识别（原生 libvosk，完全离线） ==========
+    // 渲染进程负责麦克风（只有它能调 getUserMedia），把 16kHz 单声道 PCM
+    // 按 ~100ms 一块送主进程；主进程持有原生引擎并回传识别文字。
+    asrStatus: () => ipcRenderer.invoke('asr-status'),
+    asrInstall: () => ipcRenderer.invoke('asr-install'),
+    asrStart: () => ipcRenderer.invoke('asr-start'),
+    asrStop: () => ipcRenderer.invoke('asr-stop'),
+    asrFeed: (pcm) => ipcRenderer.send('asr-feed', pcm),
+    onAsrResult: (cb) => ipcRenderer.on('asr://result', (e, text) => cb(text)),
+    onAsrInstallProgress: (cb) => ipcRenderer.on('asr://install-progress', (e, info) => cb(info)),
+
     // Event listeners (原有)
     onCharacterUpdate: (cb) => ipcRenderer.on('character-update', (e, data) => cb(data)),
     onPetWindowClosed: (cb) => ipcRenderer.on('pet-window-closed', () => cb()),

@@ -55,6 +55,33 @@ function nativeStatus(userDataPath, deps = {}) {
 }
 
 /**
+ * Download and unpack libvosk.dll (plus its MinGW runtime DLLs).
+ * Reuses the downloader / zip extractor that were validated against the real
+ * model archive, so there is one implementation of "fetch and unpack" here.
+ */
+async function installNativeLib(userDataPath, deps = {}) {
+    const fs = deps.fs || require('fs');
+    const path = deps.path || require('path');
+    const { downloadFile } = require('./asr-model');
+    const { extractZip } = require('./zip-extract');
+
+    const already = nativeStatus(userDataPath, deps);
+    if (already.installed) return { ...already, skipped: true };
+
+    const root = nativeRoot(userDataPath, path);
+    fs.mkdirSync(root, { recursive: true });
+    const zipPath = path.join(root, `${NATIVE.name}.zip`);
+
+    const dl = await downloadFile(NATIVE.url, zipPath, { ...deps, fs, path });
+    const res = extractZip(fs.readFileSync(zipPath), path.join(root, 'lib'), { ...deps, fs, path });
+    try { fs.rmSync(zipPath, { force: true }); } catch { /* ignore */ }
+
+    const after = nativeStatus(userDataPath, deps);
+    if (!after.installed) throw new Error(`native_install_incomplete:${after.missing.join(',')}`);
+    return { ...after, bytes: dl.bytes, extracted: res.files };
+}
+
+/**
  * Bind the Vosk C API from libvosk.dll.
  * Signatures are taken verbatim from the vosk_api.h shipped in the archive.
  */
@@ -180,6 +207,7 @@ module.exports = {
     nativeRoot,
     nativeLibDir,
     nativeStatus,
+    installNativeLib,
     bindVosk,
     createEngine,
     OfflineRecognizer,

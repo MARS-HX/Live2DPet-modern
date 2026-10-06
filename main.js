@@ -38,6 +38,7 @@ const { registerDshIPC } = require('./src/main/dsh-ipc');
 const { registerBilibiliIPC } = require('./src/main/bilibili-ipc');
 const { registerObsIPC } = require('./src/main/obs-ipc');
 const { registerObsBrowserSource } = require('./src/main/obs-browser-ipc');
+const { registerAsrIPC } = require('./src/main/asr-ipc');
 const { createPathUtils } = require('./src/utils/path-utils');
 const { TTSService } = require('./src/core/tts-service');
 
@@ -75,6 +76,9 @@ registerBilibiliIPC(ctx, ipcMain, { configManager, app });
 ctx.obsModeActive = !!global.__obsModeActive;
 registerObsBrowserSource(ctx, { app, http, fs, path, ws: require('ws'), basePath, configManager });
 registerObsIPC(ctx, ipcMain, { configManager, app });
+
+// ========== 离线语音识别（原生 libvosk + koffi） ==========
+registerAsrIPC(ctx, ipcMain, { app, configManager });
 
 // ========== 麦克风权限（保留，但 STT 未使用） ==========
 ipcMain.handle('REQUEST_MICROPHONE_ACCESS', async () => {
