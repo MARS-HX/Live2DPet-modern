@@ -389,12 +389,24 @@ class DesktopPetSystem {
                 }
             };
             rec.onerror = (e) => {
-                // 'not-allowed' means the user denied the mic: stop retrying loudly.
-                if (e && (e.error === 'not-allowed' || e.error === 'service-not-allowed')) {
-                    console.log('[CompanionVoice] microphone denied; disabling voice input');
+                const reason = (e && e.error) || 'unknown';
+                // Chromium's recogniser is a *cloud* service. Electron ships no
+                // Google API key for it, so `start()` normally fails with
+                // "network" / "service-not-allowed" no matter what the user
+                // does — previously every failure was mislabelled as "microphone
+                // denied", which hid the real cause. Report it truthfully.
+                if (reason === 'no-speech' || reason === 'aborted') return;   // benign
+                console.log(`[CompanionVoice] speech recognition error: "${reason}"`
+                    + (reason === 'network' || reason === 'service-not-allowed'
+                        ? ' — Chromium 的语音识别依赖 Google 在线服务，Electron 不带该密钥，'
+                          + '所以免手语音输入在本应用内无法工作'
+                        : ''));
+                if (reason === 'not-allowed' || reason === 'service-not-allowed' || reason === 'network') {
+                    // Stop retrying: no amount of restarts will fix a missing service.
                     this.companionVoiceInput = false;
                     this._companionVoiceActive = false;
                     this._companionRecognition = null;
+                    this._companionVoiceFailedReason = reason;
                 }
             };
             rec.onend = () => {
