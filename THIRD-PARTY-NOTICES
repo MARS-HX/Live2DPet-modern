@@ -6,15 +6,21 @@ each component's license terms independently.
 
 BUNDLED COMPONENTS
 
-vosk-browser (offline speech recognition, WebAssembly build of Vosk)
-  - Source: https://github.com/ccoreilly/vosk-browser
-  - License: Apache-2.0
-  - Location: libs/vosk/vosk.js (vendored so recognition works fully offline)
-  - Credit: Offline speech-to-text is provided by Vosk. The small Chinese
-    acoustic model (vosk-model-small-cn-0.22) is NOT bundled — it is downloaded
-    once at the user's request and stored in the user's data directory.
-  - Model source: https://alphacephei.com/vosk/models
-  - Vosk licence: Apache-2.0 (https://github.com/alphacep/vosk-api)
+(none for speech recognition — see below)
+
+DOWNLOADED AT RUNTIME, ON THE USER'S REQUEST
+
+Vosk / libvosk — offline speech recognition engine
+  - Source: https://github.com/alphacep/vosk-api  (Apache-2.0)
+  - The Windows build (vosk-win64-0.3.45.zip) is downloaded once, only when the
+    user asks for offline voice input, and is stored in the user's data folder.
+    It is NOT part of this repository or its installer.
+  - Credit: Fully offline speech-to-text is provided by Vosk.
+
+vosk-model-small-cn-0.22 — Chinese acoustic model
+  - Source: https://alphacephei.com/vosk/models  (Apache-2.0)
+  - Downloaded once on request, stored in the user's data folder.
+  - Recognition runs entirely on the local machine; nothing is sent anywhere.
 
 DESIGN REFERENCES (no code copied or bundled)
 

@@ -167,8 +167,21 @@ WASM 路线需要的所有东西，这里**一个都不需要**：
 | Emscripten 虚拟文件系统 / IDBFS | 不需要 |
 | 浏览器安全上下文（麦克风） | 不需要 |
 
-故 `src/main/tar-writer.js` 与 `libs/vosk/vosk.js` 对当前方案已无用
-（tar 打包器的测试仍保留，作为已验证工具）。
+### 已清理的 WASM 残留
+
+确定走原生路线后，以下均已删除（原因保留在本文档里，便于日后需要时重建）：
+
+| 已删除 | 当初为何需要 |
+|---|---|
+| `libs/vosk/vosk.js`（5.7 MB） | WASM 引擎本体 |
+| `src/main/tar-writer.js` + 其测试 | 引擎只吃未压缩 tar，需要把模型打包 |
+| `vosk-browser` devDependency | 同上 |
+
+### 打包注意
+
+`libvosk.dll` 及其 MinGW 运行时（合计约 67 MB）放在 **userData**，
+**不进安装包**。真正需要 `asarUnpack` 的是 `koffi`（FFI 加载器），
+构建配置里已包含：`"asarUnpack": ["node_modules/koffi/**"]`。
 
 ### 验证方式
 
