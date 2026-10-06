@@ -1522,6 +1522,99 @@ document.getElementById('btn-obs-restart')?.addEventListener('click', async () =
     await window.electronAPI.appRestart();
 });
 
+// ========== 离线语音识别（原生 libvosk） ==========
+
+function renderAsrStatus(st) {
+    const line = document.getElementById('asr-status-line');
+    const installBtn = document.getElementById('btn-asr-install');
+    if (!line) return;
+    const ready = st.nativeInstalled && st.modelInstalled;
+    if (!st.platformSupported) {
+        line.textContent = t('asr.unsupported');
+        line.className = 'status error';
+    } else if (ready) {
+        line.textContent = '🟢 ' + t('asr.ready')
+            + (st.engineLoaded ? ' · ' + t('asr.engineLoaded') : '')
+            + (st.listening ? ' · ' + t('asr.listening') : '');
+        line.className = 'status success';
+    } else {
+        const parts = [];
+        if (!st.nativeInstalled) parts.push(t('asr.needNative'));
+        if (!st.modelInstalled) parts.push(t('asr.needModel'));
+        line.textContent = '⚠️ ' + parts.join(' · ');
+        line.className = 'status error';
+    }
+    if (installBtn) {
+        installBtn.disabled = ready;
+        installBtn.textContent = ready ? t('asr.installed') : t('asr.install');
+    }
+}
+
+async function loadAsrStatus() {
+    if (!window.electronAPI || !window.electronAPI.asrStatus) return;
+    try {
+        renderAsrStatus(await window.electronAPI.asrStatus());
+    } catch (e) {
+        const line = document.getElementById('asr-status-line');
+        if (line) { line.textContent = t('asr.statusFailed') + e.message; line.className = 'status error'; }
+    }
+}
+
+document.getElementById('btn-asr-install')?.addEventListener('click', async () => {
+    const msg = document.getElementById('asr-msg');
+    const prog = document.getElementById('asr-progress');
+    const btn = document.getElementById('btn-asr-install');
+    if (btn) btn.disabled = true;
+    if (msg) { msg.textContent = t('asr.downloading'); msg.className = 'status'; }
+    if (prog) { prog.style.display = 'block'; prog.textContent = ''; }
+    try {
+        const res = await window.electronAPI.asrInstall();
+        if (msg) {
+            msg.textContent = res && res.success ? t('asr.installed') : ((res && res.error) || t('asr.installFailed'));
+            msg.className = res && res.success ? 'status success' : 'status error';
+        }
+    } catch (e) {
+        if (msg) { msg.textContent = e.message; msg.className = 'status error'; }
+    }
+    if (prog) prog.style.display = 'none';
+    await loadAsrStatus();
+});
+
+document.getElementById('btn-asr-test')?.addEventListener('click', async () => {
+    const msg = document.getElementById('asr-msg');
+    const say = (text, cls) => { if (msg) { msg.textContent = text; msg.className = cls || 'status'; } };
+    if (!window.electronAPI?.asrStart) return;
+    const st = await window.electronAPI.asrStatus().catch(() => null);
+    if (!st || !st.nativeInstalled || !st.modelInstalled) { say(t('asr.needInstall'), 'status error'); return; }
+
+    // One-shot: listen until the first utterance comes back, then release the mic.
+    say(t('asr.testing'));
+    let done = false;
+    const finish = async (text, cls) => {
+        if (done) return;
+        done = true;
+        try { await window.electronAPI.asrStop(); } catch { /* ignore */ }
+        say(text, cls);
+    };
+    window.electronAPI.onAsrResult((text) => {
+        if (text) finish(t('asr.heard') + ' ' + text, 'status success');
+    });
+    setTimeout(() => finish(t('asr.heardNothing'), 'status error'), 15000);
+    const r = await window.electronAPI.asrStart();
+    if (!r || !r.success) finish((r && r.error) || t('asr.installFailed'), 'status error');
+});
+
+// Progress pushes from the main process while downloading.
+if (window.electronAPI?.onAsrInstallProgress) {
+    window.electronAPI.onAsrInstallProgress((info) => {
+        const prog = document.getElementById('asr-progress');
+        if (!prog) return;
+        const label = info.stage === 'native' ? t('asr.stageNative') : t('asr.stageModel');
+        prog.style.display = 'block';
+        prog.textContent = `${label} ${Math.round((info.fraction || 0) * 100)}%`;
+    });
+}
+
 // ========== Max Tokens Multiplier ==========
 
 function loadTokenMultiplierUI(multiplier) {
@@ -2014,4 +2107,17 @@ document.getElementById('btn-save-audio')?.addEventListener('click', () => {
 if (navigator.mediaDevices?.enumerateDevices) {
     enumerateAudioDevices();
     navigator.mediaDevices.addEventListener('devicechange', enumerateAudioDevices);
+}
+
+// ========== 集成面板：打开设置窗口时主动刷新各卡片状态 ==========
+// 这些面板原本只在「保存」时刷新，初始化时没人拉一次，卡片就一直显示空状态。
+// 对离线语音识别尤其要紧：状态决定「一键下载」按钮是否可用。
+// 各 loadX 都是幂等的读操作，重复调用无副作用。
+if (window.electronAPI) {
+    loadDshSettings();
+    loadCompanionSettings();
+    loadBiliSettings();
+    loadObsMode();
+    loadObsBrowserSource();
+    loadAsrStatus();
 }

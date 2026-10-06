@@ -339,6 +339,18 @@
         <div class="status" id="companion-save-status"></div>
     </div>
     <div class="card">
+        <h2 data-i18n="asr.title">Offline Voice Input</h2>
+        <p class="model-info" data-i18n="asr.desc">Hands-free voice input that runs entirely on this machine — no network, no cloud service. The engine (libvosk) and the Chinese model are downloaded once, then recognition is fully offline.</p>
+        <div class="status" id="asr-status-line"></div>
+        <div class="status" id="asr-progress" style="display:none;"></div>
+        <div class="btn-row">
+            <button class="btn btn-primary" id="btn-asr-install" data-i18n="asr.install">Download engine &amp; model</button>
+            <button class="btn btn-secondary" id="btn-asr-test" data-i18n="asr.test">Test listening</button>
+        </div>
+        <div class="status" id="asr-msg"></div>
+        <p class="model-info" style="font-size:11px;color:#888;" data-i18n="asr.hint">After downloading, enable “hands-free voice input” below and start the pet. Speak normally — recognised speech goes to the pet exactly like a chat message.</p>
+    </div>
+    <div class="card">
         <h2 data-i18n="obs.title">Use the pet in OBS</h2>
         <p class="model-info" data-i18n="obs.desc">Recommended: add the pet as an <b>OBS Browser Source</b>. OBS draws the pet itself, so transparency works properly and there is no window capture involved at all. Nothing extra appears on your desktop.</p>
         <div class="status" id="obs-bs-status"></div>
