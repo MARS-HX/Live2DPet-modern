@@ -1251,8 +1251,12 @@ async function loadCompanionSettings() {
     set('companion-patterns', Array.isArray(cfg.gamePatterns) ? cfg.gamePatterns.join(', ') : '');
 }
 
-document.getElementById('btn-save-companion')?.addEventListener('click', async () => {
-    const status = document.getElementById('companion-save-status');
+/**
+ * Persist the whole companion block from the DOM.
+ * Shared by the 保存陪伴设置 button and by the hands-free toggle in the
+ * offline-voice card, so the two can never disagree about what was saved.
+ */
+async function saveCompanionSettings() {
     const secs = parseInt(document.getElementById('companion-interval').value, 10);
     const patterns = document.getElementById('companion-patterns').value
         .split(',').map(s => s.trim()).filter(Boolean);
@@ -1267,6 +1271,11 @@ document.getElementById('btn-save-companion')?.addEventListener('click', async (
             gamePatterns: patterns
         }
     });
+}
+
+document.getElementById('btn-save-companion')?.addEventListener('click', async () => {
+    const status = document.getElementById('companion-save-status');
+    await saveCompanionSettings();
     status.textContent = t('companion.saved');
     status.className = 'status success';
     await loadCompanionSettings();
@@ -1559,6 +1568,23 @@ async function loadAsrStatus() {
         if (line) { line.textContent = t('asr.statusFailed') + e.message; line.className = 'status error'; }
     }
 }
+
+// The hands-free toggle lives in this card (that is where people look for it),
+// but it belongs to the companion config — so save on change rather than making
+// the user hunt for a save button in another card.
+document.getElementById('companion-voice')?.addEventListener('change', async () => {
+    const msg = document.getElementById('asr-msg');
+    const on = document.getElementById('companion-voice').checked;
+    try {
+        await saveCompanionSettings();
+        if (msg) {
+            msg.textContent = on ? t('asr.handsFreeOn') : t('asr.handsFreeOff');
+            msg.className = 'status success';
+        }
+    } catch (e) {
+        if (msg) { msg.textContent = t('asr.saveFailed') + e.message; msg.className = 'status error'; }
+    }
+});
 
 document.getElementById('btn-asr-install')?.addEventListener('click', async () => {
     const msg = document.getElementById('asr-msg');
