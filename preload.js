@@ -77,7 +77,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ttsRestart: () => ipcRenderer.invoke('tts-restart'),
     ttsReinit: (config) => ipcRenderer.invoke('tts-reinit', config),
     ttsDiagnose: () => ipcRenderer.invoke('tts-diagnose'),
-    sttWindows: () => ipcRenderer.invoke('stt-windows'),
     appRelaunch: () => ipcRenderer.invoke('app-relaunch'),
     ttsSetConfig: (config) => ipcRenderer.invoke('tts-set-config', config),
     ttsGetMetas: () => ipcRenderer.invoke('tts-get-metas'),
@@ -121,23 +120,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     obsServerStop: () => ipcRenderer.invoke('obs-server-stop'),
     // 桌宠在浏览器源画面里的位置与大小（实时推送到 OBS）
     obsTransformSet: (patch) => ipcRenderer.invoke('obs-transform-set', patch),
-
-    // ========== 语音识别 (ASR) - 云端/旧版 ==========
-    TRANSCRIBE_AUDIO: (audioBuffer, mimeType) => ipcRenderer.invoke('TRANSCRIBE_AUDIO', audioBuffer, mimeType),
-
-    // ========== 本地 STT (Vosk 离线识别) ==========
-    // 初始化本地 STT 服务（加载模型）
-    sttInitialize: () => ipcRenderer.invoke('stt:initialize'),
-    // 开始识别（清空缓存）
-    sttStart: () => ipcRenderer.invoke('stt:start'),
-    // 停止识别
-    sttStop: () => ipcRenderer.invoke('stt:stop'),
-    // 发送音频 PCM 数据 (Int16Array 的 buffer)
-    sttFeedAudio: (pcmBuffer) => ipcRenderer.send('stt:feed-audio', pcmBuffer),
-    // 监听识别结果
-    onSttResult: (cb) => ipcRenderer.on('stt:result', (event, text) => cb(text)),
-    // 监听状态变化（如 'listening' / 'stopped'）
-    onSttStatus: (cb) => ipcRenderer.on('stt:status', (event, status) => cb(status)),
 
     // Event listeners (原有)
     onCharacterUpdate: (cb) => ipcRenderer.on('character-update', (e, data) => cb(data)),

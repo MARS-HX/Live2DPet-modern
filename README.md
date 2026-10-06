@@ -251,6 +251,14 @@ Live2DPet-modern/
 
 ## 📋 更新日志
 
+### v1.6.7 — 清理无主的 STT 残留
+- **修复 `No handler registered for 'stt:initialize'`**：早先移除云端 STT 时留下了悬空引用
+  —— `preload.js` 的 7 个 STT 桥接方法、`settings-ui.js` 227 行云端 STT 逻辑、
+  `index.html` 整张「语音对话（云端 STT）」卡片，已全部移除
+- **新增 `tests/test-ipc-channels.js` 永久防线**：对账 preload 的
+  `invoke()/send()` 与主进程的 `handle()/on()`，并检测重复注册
+  —— 加上去当场又抓出一个同类残留（`TRANSCRIBE_AUDIO`）
+
 ### v1.6.6 — 修复浏览器源设置面板报错
 - **修复 `obs-server-get` 的 `An object could not be cloned`**：
   返回值里塞进了 `url` **方法**而不是调用结果，Electron 无法结构化克隆 → 面板全部失效

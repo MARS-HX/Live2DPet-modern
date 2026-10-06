@@ -1,5 +1,36 @@
 # Changelog
 
+## v1.6.7 — 清理无主的 STT 残留（修复 `No handler registered for 'stt:initialize'`）
+
+### 🐛 根因
+
+早先移除云端 STT 模块时，**留下了三处悬空引用**：
+
+| 位置 | 残留 |
+|------|------|
+| `preload.js` | 7 个 STT 桥接方法（`sttInitialize` / `sttStart` / `sttStop` / `sttFeedAudio` / `onSttResult` / `onSttStatus` / `TRANSCRIBE_AUDIO`）+ 一段空注释 |
+| `settings-ui.js` | 227 行的 `startCloudSTT` / `stopCloudSTT` 整套逻辑 |
+| `index.html` | 整张「语音对话（云端 STT）」卡片（含 `btn-voice-toggle`） |
+
+因为 `preload` 里**方法还在**，`settings-ui` 的 `if (window.electronAPI.sttInitialize)` 判断为真，
+于是真的去 invoke 一个**已经不存在的 handler** → 运行时报
+`No handler registered for 'stt:initialize'`。
+
+**已全部移除**（含 `stt.*` 的 3 个 i18n 键）。
+
+### 🛡 新增永久防线：`tests/test-ipc-channels.js`
+
+这类 bug 肉眼和 lint 都看不见 —— preload 里多一个方法、主进程少一个 handler，
+编译期毫无提示。所以加了一个测试直接对账：
+
+- `preload.js` 里每个 `ipcRenderer.invoke()` 都必须有对应的 `ipcMain.handle()`
+- 每个 `ipcRenderer.send()` 都必须有对应的 `ipcMain.on()`
+- 同一个频道**不能被注册两次**（Electron 会直接抛错）
+
+**这个测试加上去当场又抓出一个**：`TRANSCRIBE_AUDIO` 同样是无主残留。
+
+全套 **467 个测试全过**。
+
 ## v1.6.6 — 修复设置页 `obs-server-get` 报错「An object could not be cloned」
 
 ### 🐛 根因
