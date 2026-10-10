@@ -2,7 +2,7 @@
  * Tests for the dependency-free ZIP extractor used to unpack the Vosk model.
  * Run with: node --test tests/test-zip-extract.js
  */
-const { describe, it } = require('node:test');
+const { describe, it, after } = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
@@ -62,7 +62,19 @@ function makeZip(entries) {
     return Buffer.concat([...locals, centralBuf, eocd]);
 }
 
-function tmp() { return fs.mkdtempSync(path.join(os.tmpdir(), 'zipx-')); }
+// Track temp dirs so the suite stops leaving `zipx-*` directories behind in the
+// user's %TEMP% (one per run, forever, before this).
+const _tmpDirs = [];
+function tmp() {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'zipx-'));
+    _tmpDirs.push(dir);
+    return dir;
+}
+after(() => {
+    for (const dir of _tmpDirs) {
+        try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* 测试目录 */ }
+    }
+});
 
 describe('isUnsafeName', () => {
     it('allows ordinary nested paths', () => {

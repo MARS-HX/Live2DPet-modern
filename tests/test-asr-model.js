@@ -22,7 +22,19 @@ const {
 
 const QUIET = { log() {}, warn() {}, error() {} };
 
-function tmp() { return fs.mkdtempSync(path.join(os.tmpdir(), 'asr-')); }
+// Track temp dirs so the suite stops leaving `asr-*` directories behind in the
+// user's %TEMP% (one per run, forever, before this).
+const _tmpDirs = [];
+function tmp() {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'asr-'));
+    _tmpDirs.push(dir);
+    return dir;
+}
+after(() => {
+    for (const dir of _tmpDirs) {
+        try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* 测试目录 */ }
+    }
+});
 
 /** A minimal but structurally valid Vosk model tree. */
 function modelFiles(prefix = 'vosk-model-small-cn-0.22/') {

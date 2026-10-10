@@ -8,7 +8,7 @@
  *
  * Run with: node --test tests/test-obs-mode.js
  */
-const { describe, it } = require('node:test');
+const { describe, it, after } = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
@@ -20,6 +20,21 @@ const {
     readObsCompatibleSync,
     applyObsCompatibility,
 } = require('../src/main/obs-mode');
+
+// Every temp dir the suite creates is tracked and removed at the end. Without
+// this each run left a handful of `obs-mode-*` directories in the user's %TEMP%
+// for good — 1242 of them had piled up across runs before this was added.
+const _tmpDirs = [];
+function tmpDir() {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'obs-mode-'));
+    _tmpDirs.push(dir);
+    return dir;
+}
+after(() => {
+    for (const dir of _tmpDirs) {
+        try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* 测试目录 */ }
+    }
+});
 
 describe('obsSwitchesFor', () => {
     it('returns nothing when compatibility mode is off', () => {
@@ -50,7 +65,7 @@ describe('obsSwitchesFor', () => {
 
 describe('readObsCompatibleSync', () => {
     function tmpConfig(name, obj) {
-        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'obs-mode-'));
+        const dir = tmpDir();
         const file = path.join(dir, name);
         fs.writeFileSync(file, JSON.stringify(obj));
         return { dir, file };
@@ -66,12 +81,12 @@ describe('readObsCompatibleSync', () => {
     });
 
     it('returns false when the file is missing', () => {
-        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'obs-mode-'));
+        const dir = tmpDir();
         assert.strictEqual(readObsCompatibleSync({ fs, path, basePath: dir, app: { isPackaged: false } }), false);
     });
 
     it('returns false when the file is not valid JSON', () => {
-        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'obs-mode-'));
+        const dir = tmpDir();
         fs.writeFileSync(path.join(dir, 'config.json'), '{ broken');
         assert.strictEqual(readObsCompatibleSync({ fs, path, basePath: dir, app: { isPackaged: false } }), false);
     });
@@ -89,7 +104,7 @@ describe('readObsCompatibleSync', () => {
 
     it('falls back to the bundled config when a packaged app has no user config', () => {
         const bundled = tmpConfig('config.json', { obs: { compatible: true } });
-        const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'obs-mode-'));
+        const empty = tmpDir();
         const got = readObsCompatibleSync({
             fs, path,
             basePath: bundled.dir,
@@ -106,7 +121,7 @@ describe('applyObsCompatibility', () => {
     }
 
     it('appends the switches when enabled', () => {
-        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'obs-mode-'));
+        const dir = tmpDir();
         fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ obs: { compatible: true } }));
         const app = fakeApp();
         const res = applyObsCompatibility(app, { fs, path, basePath: dir, app: { isPackaged: false } });
@@ -115,7 +130,7 @@ describe('applyObsCompatibility', () => {
     });
 
     it('touches nothing when disabled', () => {
-        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'obs-mode-'));
+        const dir = tmpDir();
         fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ obs: { compatible: false } }));
         const app = fakeApp();
         const res = applyObsCompatibility(app, { fs, path, basePath: dir, app: { isPackaged: false } });

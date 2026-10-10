@@ -143,7 +143,14 @@ describe('createObsServer', () => {
         baseUrl = `http://127.0.0.1:${res.port}`;
     });
 
-    after(() => { server.close(); });
+    after(() => {
+        server.close();
+        // The suite used to leave `obs-srv-*` / `obs-model-*` directories in the
+        // user's %TEMP% on every run.
+        for (const dir of [root, modelDir]) {
+            try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* 测试目录 */ }
+        }
+    });
 
     const get = (p) => new Promise((resolve) => {
         http.get(baseUrl + p, (res) => {

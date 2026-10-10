@@ -8,7 +8,7 @@
  *
  * Run with: node --test tests/test-asr-native.js
  */
-const { describe, it } = require('node:test');
+const { describe, it, after } = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
@@ -18,7 +18,19 @@ const {
     NATIVE, nativeRoot, nativeLibDir, nativeStatus, parseText, createEngine,
 } = require('../src/main/asr-native');
 
-function tmp() { return fs.mkdtempSync(path.join(os.tmpdir(), 'asrn-')); }
+// Track temp dirs so the suite stops leaving `asrn-*` directories behind in the
+// user's %TEMP% (one per run, forever, before this).
+const _tmpDirs = [];
+function tmp() {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'asrn-'));
+    _tmpDirs.push(dir);
+    return dir;
+}
+after(() => {
+    for (const dir of _tmpDirs) {
+        try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* 测试目录 */ }
+    }
+});
 
 function makeFakeNative(userData, { withWrapper = true, skip = [] } = {}) {
     // Mirror the real layout: <userData>/vosk-native/lib/<wrapper>/libvosk.dll

@@ -17,10 +17,20 @@ const path = require('path');
 
 const { registerObsBrowserSource } = require('../src/main/obs-browser-ipc');
 
+// Track every fixture directory so the suite stops leaving `obs-bs-*` / 
+// `obs-bs-model-*` dirs in the user's %TEMP% (two per fixture, every run).
+const _fixtureDirs = [];
+after(() => {
+    for (const dir of _fixtureDirs) {
+        try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* 测试目录 */ }
+    }
+});
+
 function makeFixture() {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'obs-bs-'));
-    fs.writeFileSync(path.join(root, 'desktop-pet.html'), '<html><body>pet</body></html>');
     const modelDir = fs.mkdtempSync(path.join(os.tmpdir(), 'obs-bs-model-'));
+    _fixtureDirs.push(root, modelDir);
+    fs.writeFileSync(path.join(root, 'desktop-pet.html'), '<html><body>pet</body></html>');
     const config = { model: { folderPath: modelDir }, apiKey: 'sk-NOPE' };
 
     const app = {
