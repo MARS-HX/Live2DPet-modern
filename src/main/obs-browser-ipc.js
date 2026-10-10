@@ -59,7 +59,12 @@ function registerObsBrowserSource(ctx, deps) {
      * Idempotent: wrapping twice would double-send.
      */
     function installMirror(win) {
-        if (!win || win.isDestroyed || win.isDestroyed()) return;
+        // `win.isDestroyed` WITHOUT the call is a function reference — always truthy —
+        // so this guard used to return on every single call and no window was ever
+        // wrapped. The browser source therefore received none of the pet's events
+        // (play-expression / talking-state-changed / chat-bubble-message), which is
+        // the whole point of the mirror.
+        if (!win || win.isDestroyed()) return;
         const wc = win.webContents;
         if (!wc || wc.__obsMirrored) return;
         const original = wc.send.bind(wc);

@@ -49,7 +49,7 @@ function makeFixture() {
         basePath: root, configManager,
         logger: { log() {}, warn() {}, error() {} },
     });
-    return { source, root, modelDir };
+    return { source, root, modelDir, ctx };
 }
 
 describe('registerObsBrowserSource', () => {
@@ -135,6 +135,57 @@ describe('registerObsBrowserSource', () => {
         assert.strictEqual(source.status.running, true);
         source.stop();
         assert.strictEqual(source.status.running, false);
+    });
+
+    it('把宠物窗口的事件镜像给浏览器源（回归：isDestroyed 被当值用导致镜像整体失效）', async () => {
+        // 旧代码是 `if (!win || win.isDestroyed || win.isDestroyed()) return;` ——
+        // 中间那个 win.isDestroyed 是**方法引用**（恒真），于是 installMirror 每次
+        // 都在第一行返回，没有任何窗口被包装，浏览器源收不到任何宠物事件。
+        const { source, ctx } = makeFixture();
+        const res = await source.start(0);
+
+        const WebSocket = require('ws');
+        const sock = new WebSocket(`ws://127.0.0.1:${res.port}/ws`);
+        sock.on('error', () => { /* tearing the server down resets the socket */ });
+        const seen = [];
+        sock.on('message', (m) => seen.push(JSON.parse(m.toString())));
+        try {
+            await new Promise((r) => sock.on('open', r));
+            await new Promise((r) => setTimeout(r, 200));
+            seen.length = 0;   // 丢掉 init
+
+            const original = [];
+            const wc = { send: (channel, ...args) => { original.push([channel, args]); } };
+            ctx.petWindow = { isDestroyed: () => false, webContents: wc };
+            source.installMirrors();
+
+            // 真实调用约定：Electron 的 webContents.send(channel, ...args)，
+            // 所以单个参数就是 send('play-expression', '兴奋')，不是塞一个数组进去。
+            wc.send('play-expression', '兴奋');
+            wc.send('talking-state-changed', true);
+            await new Promise((r) => setTimeout(r, 200));
+
+            assert.deepStrictEqual(original.length, 2, '原 send 必须被照常调用（不能被包装吃掉）');
+            assert.deepStrictEqual(original[0], ['play-expression', ['兴奋']]);
+            const channels = seen.map((s) => s.channel);
+            assert.ok(channels.includes('play-expression'), `浏览器源应收到 play-expression，实际收到 ${JSON.stringify(channels)}`);
+            assert.ok(channels.includes('talking-state-changed'));
+            assert.deepStrictEqual(seen.find((s) => s.channel === 'play-expression').args, ['兴奋'],
+                'OBS 侧应当收到 args=[\'兴奋\']（shim 会用它去调 emit）');
+
+            // 幂等：重复安装不应重复发送
+            source.installMirrors();
+            seen.length = 0;
+            wc.send('play-expression', '再试');
+            await new Promise((r) => setTimeout(r, 200));
+            assert.strictEqual(seen.filter((s) => s.channel === 'play-expression').length, 1, '包装两次会重复发送');
+        } finally {
+            // Cleanup MUST run even when an assertion throws: a live socket or listener
+            // keeps the event loop alive, and node:test only prints its summary once the
+            // loop drains — the whole file then looks like it hung with no output.
+            try { sock.terminate(); } catch (e) { /* already gone */ }
+            source.stop();
+        }
     });
 
     it('reports running only after listen() has bound a port', async () => {

@@ -231,6 +231,40 @@ describe('OfflineAsrCapture — capturing', () => {
         assert.strictEqual(cap.active, false);
     });
 
+    it('已经 active 时再 start() 直接返回 ok', async () => {
+        const { cap } = await started();
+        const res = await cap.start();
+        assert.strictEqual(res.ok, true);
+        await cap.stop();
+    });
+
+    it('getUserMedia 在途时 stop()：麦克风必须被释放，且不能再被置为 active（回归：只修了同实例去重）', async () => {
+        // settings-ui 的「测试听写」每次点击都 new 一个 capture，所以同实例的
+        // _startPromise 去重跨点击不生效。旧实现在这里放行后会把 _active 置回 true，
+        // 而 asrTestCapture 早已指向新实例 —— 那支麦克风永远没人能停。
+        const mod = loadModule();
+        let release;
+        const gate = new Promise((r) => { release = r; });
+        const realGetUserMedia = globalThis.navigator.mediaDevices.getUserMedia;
+        globalThis.navigator.mediaDevices.getUserMedia = async (...args) => {
+            await gate;
+            return realGetUserMedia(...args);
+        };
+
+        const cap = new mod.OfflineAsrCapture({ logger: QUIET, onText: () => {} });
+        const starting = cap.start();
+        await new Promise((r) => setTimeout(r, 0));   // 让它卡在 getUserMedia 上
+        await cap.stop();                             // 此刻各字段仍为 null，_teardown 无事可做
+        release();
+
+        const res = await starting;
+        assert.strictEqual(res.ok, false, '被停止的启动不该报告成功');
+        assert.strictEqual(res.reason, 'cancelled');
+        assert.strictEqual(cap.active, false, 'stop 之后不能再被置为 active');
+        assert.strictEqual(env.media.stopped, true, '放行后必须把麦克风轨道停掉，否则话筒一直开着');
+        assert.strictEqual(env.ports.length, 0, '被取消的启动不该再建 worklet 节点');
+    });
+
     it('starting twice does not open a second microphone', async () => {
         const { cap } = await started();
         const res = await cap.start();

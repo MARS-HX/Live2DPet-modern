@@ -67,6 +67,7 @@ registerProcessor('l2d-capture', CaptureProcessor);
             this._resultBound = null;
             this._active = false;
             this._startPromise = null;   // in-flight start(), so concurrent calls share it
+            this._startToken = 0;        // bumped by stop(), so an in-flight start can bail
         }
 
         get active() { return this._active; }
@@ -80,12 +81,13 @@ registerProcessor('l2d-capture', CaptureProcessor);
             // ports kept feeding the recogniser at double rate — the transcript was
             // necessarily wrong, and the microphone stayed live.
             if (this._startPromise) return this._startPromise;
-            this._startPromise = this._startInternal().finally(() => { this._startPromise = null; });
+            const token = ++this._startToken;
+            this._startPromise = this._startInternal(token).finally(() => { this._startPromise = null; });
             return this._startPromise;
         }
 
         /** @returns {Promise<{ok:boolean, reason?:string}>} never throws */
-        async _startInternal() {
+        async _startInternal(token) {
             if (this._active) return { ok: true };
             if (!this._api) return { ok: false, reason: 'no_bridge' };
             if (!root.navigator?.mediaDevices?.getUserMedia) {
@@ -126,6 +128,17 @@ registerProcessor('l2d-capture', CaptureProcessor);
                 return { ok: false, reason: 'microphone_denied' };
             }
 
+            // stop() may have run while getUserMedia was still pending. Back then there was
+            // nothing to tear down (every field was still null), so without this check the
+            // just-granted microphone would stay open forever with no reference left to stop
+            // it. settings-ui creates a NEW capture per click, so a per-instance start
+            // promise cannot protect this path — the token can.
+            if (token !== this._startToken) {
+                this._logger.log?.('[OfflineAsr] start cancelled while acquiring the microphone');
+                await this._teardown();
+                return { ok: false, reason: 'cancelled' };
+            }
+
             try {
                 const Ctx = root.AudioContext || root.webkitAudioContext;
                 this._ctx = new Ctx();
@@ -155,6 +168,14 @@ registerProcessor('l2d-capture', CaptureProcessor);
                 await this._teardown();
                 this._onError(e.message);
                 return { ok: false, reason: e.message };
+            }
+
+            // Same check after the context/worklet awaits: a stop that arrived mid-setup
+            // must not end with this call flipping the capture "active" again.
+            if (token !== this._startToken) {
+                this._logger.log?.('[OfflineAsr] start cancelled during capture setup');
+                await this._teardown();
+                return { ok: false, reason: 'cancelled' };
             }
 
             // Recognised text arrives asynchronously from the main process.
@@ -212,6 +233,10 @@ registerProcessor('l2d-capture', CaptureProcessor);
         }
 
         async stop() {
+            // Invalidate any in-flight start() first: it re-checks this token after every
+            // await, and without the bump it would finish by flipping the capture active
+            // and leaving a live microphone behind.
+            this._startToken += 1;
             const was = this._active;
             this._active = false;
             await this._teardown();

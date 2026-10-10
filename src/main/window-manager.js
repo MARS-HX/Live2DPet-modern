@@ -218,7 +218,7 @@ function registerWindowHandlers(ctx, ipcMain, deps) {
 
             const petBounds = ctx.petWindow.getBounds();
 
-            ctx.chatBubbleWindow = new deps.BrowserWindow({
+            const bubble = new deps.BrowserWindow({
                 width: 250, height: 80,
                 x: petBounds.x + (petBounds.width - 250) / 2,
                 y: petBounds.y - 80 + petBounds.height * 0.25,
@@ -232,18 +232,29 @@ function registerWindowHandlers(ctx, ipcMain, deps) {
                     preload: deps.path.join(deps.basePath, 'preload.js')
                 }
             });
-            ctx.chatBubbleWindow.setAlwaysOnTop(true, 'screen-saver');
-            ctx.chatBubbleWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-            await ctx.chatBubbleWindow.loadFile(deps.path.join(deps.basePath, 'pet-chat-bubble.html'));
-            applyCSP(ctx.chatBubbleWindow);
+            ctx.chatBubbleWindow = bubble;
+            // Register `closed` BEFORE the await below, and only clear the slot while it
+            // still belongs to THIS window. `win.close()` is asynchronous, so the previous
+            // bubble's handler ran *after* the new one had taken the slot and wiped it:
+            // the new bubble was then unreachable — never shown, never closable, never
+            // closed — and its message was dropped. That is why every second reply
+            // silently disappeared and each one leaked a renderer process.
+            bubble.on('closed', () => {
+                if (ctx.chatBubbleWindow === bubble) ctx.chatBubbleWindow = null;
+            });
+            bubble.setAlwaysOnTop(true, 'screen-saver');
+            bubble.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+            await bubble.loadFile(deps.path.join(deps.basePath, 'pet-chat-bubble.html'));
+            applyCSP(bubble);
 
             setTimeout(() => {
-                if (ctx.chatBubbleWindow && !ctx.chatBubbleWindow.isDestroyed()) {
-                    ctx.chatBubbleWindow.webContents.send('chat-bubble-message', { message, autoCloseTime });
+                // Same identity rule: a newer bubble may have replaced this one, in which
+                // case this message is stale and must not be delivered.
+                if (ctx.chatBubbleWindow === bubble && !bubble.isDestroyed()) {
+                    bubble.webContents.send('chat-bubble-message', { message, autoCloseTime });
                 }
             }, 500);
 
-            ctx.chatBubbleWindow.on('closed', () => { ctx.chatBubbleWindow = null; });
             return { success: true };
         } catch (error) {
             return { success: false, error: error.message };

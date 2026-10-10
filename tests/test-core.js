@@ -425,6 +425,47 @@ describe('DesktopPetSystem', () => {
         assert.strictEqual(sys.currentAudio, null);
     });
 
+    it('连续三次语音启动失败后关闭语音输入（回归：白名单漏掉"装了但起不来"）', () => {
+        // 「引擎装了但加载不起来」在主进程里是以 e.message 原文回传的，不在白名单里。
+        // 而 _syncCompanionVoice 由 1 秒的 focusTick 驱动 —— 没有兜底就是每秒一次
+        // asrStart（重建原生识别器）+ getUserMedia，永不停。
+        const sys = new DesktopPetSystem();
+        sys.companionVoiceInput = true;
+        sys._noteVoiceFailure('Error: failed to load libvosk: not a valid Win32 application');
+        assert.strictEqual(sys.companionVoiceInput, true, '单次未知失败先重试');
+        sys._noteVoiceFailure('Error: failed to load libvosk: not a valid Win32 application');
+        assert.strictEqual(sys.companionVoiceInput, true, '第二次仍重试');
+        sys._noteVoiceFailure('Error: failed to load libvosk: not a valid Win32 application');
+        assert.strictEqual(sys.companionVoiceInput, false, '连续三次未知失败必须停手，否则是每秒一次的风暴');
+    });
+
+    it('已知的永久失败一次就停手', () => {
+        const sys = new DesktopPetSystem();
+        sys.companionVoiceInput = true;
+        sys._noteVoiceFailure('microphone_denied');
+        assert.strictEqual(sys.companionVoiceInput, false);
+    });
+
+    it('启动成功会清零失败计数', async () => {
+        const sys = new DesktopPetSystem();
+        sys.companionVoiceInput = true;
+        sys._noteVoiceFailure('unknown-a');
+        sys._noteVoiceFailure('unknown-b');
+        assert.strictEqual(sys._voiceFailureCount, 2);
+        // 让它成功启动一次（走离线路径）
+        global.window.OfflineAsr = {
+            OfflineAsrCapture: class {
+                constructor() {}
+                start() { return Promise.resolve({ ok: true }); }
+                stop() { return Promise.resolve(); }
+            },
+        };
+        sys._startOfflineVoice();
+        await new Promise((r) => setTimeout(r, 0));
+        assert.strictEqual(sys._voiceFailureCount, 0, '成功一次之后计数必须清零');
+        assert.strictEqual(sys.companionVoiceInput, true);
+    });
+
     it('_companionMoment 持锁：并发检测 tick 不会打出两个模型请求', async () => {
         const sys = new DesktopPetSystem();
         sys.isActive = true;
@@ -827,48 +868,14 @@ describe('PathUtils', () => {
 // ========== Test: Config Schema & Migration ==========
 
 describe('ConfigSchema', () => {
-    // We test the pure functions by extracting them from main.js logic
-    // Since main.js uses electron requires, we replicate the pure config functions here
-
-    function getDefaultModelConfig() {
-        return {
-            type: 'none', folderPath: null, modelJsonFile: null,
-            copyToUserData: true, userDataModelPath: null,
-            staticImagePath: null, bottomAlignOffset: 0.5,
-            gifExpressions: {},
-            paramMapping: {
-                angleX: null, angleY: null, angleZ: null,
-                bodyAngleX: null, eyeBallX: null, eyeBallY: null
-            },
-            hasExpressions: false, expressions: [],
-            expressionDurations: {}, defaultExpressionDuration: 5000,
-            canvasYRatio: 0.60
-        };
-    }
-
-    function getDefaultConfig() {
-        return {
-            configVersion: 1, apiKey: '', baseURL: 'https://openrouter.ai/api/v1',
-            modelName: 'x-ai/grok-4.1-fast', interval: 10,
-            emotionFrequency: 30, enabledEmotions: [],
-            model: getDefaultModelConfig(),
-            bubble: { frameImagePath: null }, appIcon: null
-        };
-    }
-
-    function migrateConfig(config) {
-        if (config.configVersion >= 1) return config;
-        if (!config.configVersion) {
-            config.configVersion = 1;
-            if (!config.model) config.model = getDefaultModelConfig();
-            if (!config.bubble) config.bubble = { frameImagePath: null };
-            if (config.appIcon === undefined) config.appIcon = null;
-            if (Array.isArray(config.enabledEmotions) && config.enabledEmotions.length > 0) {
-                config.enabledEmotions = [];
-            }
-        }
-        return config;
-    }
+    // 以前这里把 getDefaultConfig / getDefaultModelConfig / migrateConfig 抄了一份进测试文件，
+    // 于是这组用例只证明"副本自己自洽"，生产代码怎么改都不会红（副本的 getDefaultConfig
+    // 只有 10 个键，真实的 config-manager.js 有 17 个）。现在直接打真实模块。
+    const {
+        getDefaultConfig,
+        getDefaultModelConfig,
+        migrateConfig,
+    } = require('../src/main/config-manager');
 
     it('getDefaultConfig has all required fields', () => {
         const cfg = getDefaultConfig();
@@ -926,29 +933,10 @@ describe('ConfigSchema', () => {
 // ========== Test: Parameter Fuzzy Mapping ==========
 
 describe('ParamFuzzyMapping', () => {
-    const PARAM_FUZZY_MAP = {
-        angleX:     ['ParamAngleX', 'ParamX', 'Angle_X', 'PARAM_ANGLE_X', 'AngleX'],
-        angleY:     ['ParamAngleY', 'ParamY', 'Angle_Y', 'PARAM_ANGLE_Y', 'AngleY'],
-        angleZ:     ['ParamAngleZ', 'ParamZ', 'Angle_Z', 'PARAM_ANGLE_Z', 'AngleZ'],
-        bodyAngleX: ['ParamBodyAngleX', 'BodyAngleX', 'PARAM_BODY_ANGLE_X', 'ParamBodyX'],
-        eyeBallX:   ['ParamEyeBallX', 'EyeBallX', 'PARAM_EYE_BALL_X', 'ParamEyeX'],
-        eyeBallY:   ['ParamEyeBallY', 'EyeBallY', 'PARAM_EYE_BALL_Y', 'ParamEyeY']
-    };
-
-    function suggestParamMapping(parameterIds) {
-        const suggested = {};
-        for (const [key, candidates] of Object.entries(PARAM_FUZZY_MAP)) {
-            const match = candidates.find(c =>
-                parameterIds.some(p => p.toLowerCase() === c.toLowerCase())
-            );
-            if (match) {
-                suggested[key] = parameterIds.find(p => p.toLowerCase() === match.toLowerCase());
-            } else {
-                suggested[key] = null;
-            }
-        }
-        return suggested;
-    }
+    // 同样的问题：这里曾抄了一份 suggestParamMapping（而且是修复前的版本，没有脏数据过滤），
+    // 于是"参数模糊匹配"这组用例从来没碰过 src/main/model-import.js。改为直接打真实模块
+    // （更细的别名覆盖见 tests/test-model-import.js）。
+    const { suggestParamMapping } = require('../src/main/model-import');
 
     it('maps standard Cubism4 parameters', () => {
         const ids = ['ParamAngleX', 'ParamAngleY', 'ParamAngleZ', 'ParamBodyAngleX', 'ParamEyeBallX', 'ParamEyeBallY'];
@@ -1032,12 +1020,24 @@ describe('ModelAdapter', () => {
 
     it('NullAdapter methods are no-ops', () => {
         const adapter = new ctx.NullAdapter({});
-        adapter.setExpression('test');
-        adapter.revertExpression();
-        adapter.updateParams(0.5, 0.5);
-        adapter.resize(300, 300);
-        adapter.destroy();
-        assert.ok(true);
+        for (const m of ['setExpression', 'revertExpression', 'updateParams', 'resize', 'destroy']) {
+            assert.strictEqual(typeof adapter[m], 'function', `${m} 应当存在`);
+        }
+        // 之前这条只有 `assert.ok(true)`，等于什么都没验证。改为断言「空适配器真的不碰 DOM」：
+        // 一个偷偷去建元素/改画布的 NullAdapter 会在这里失败。
+        const realCreateElement = global.document.createElement;
+        let created = 0;
+        global.document.createElement = (...args) => { created += 1; return realCreateElement(...args); };
+        try {
+            adapter.setExpression('test');
+            adapter.revertExpression();
+            adapter.updateParams(0.5, 0.5);
+            adapter.resize(300, 300);
+            adapter.destroy();
+        } finally {
+            global.document.createElement = realCreateElement;
+        }
+        assert.strictEqual(created, 0, '空适配器不该创建任何 DOM 元素');
     });
 
     it('ImageAdapter stores config', () => {
@@ -1201,7 +1201,9 @@ describe('MessageSession', () => {
         assert.strictEqual(alignedDuration, 4800);
     });
 
-    it('run uses independent emotion when emotionValue is low', async () => {
+    it('低情绪 + TTS 模式下两条情绪路径都不触发', async () => {
+        // 用例名原先写的是「低情绪时走独立情绪」，但断言只查了 alignedCalled，
+        // 而 independentCalled 声明了却从没被断言过 —— 低情绪路径整个不动也能过。
         const s = MessageSession.create('calm text');
         let independentCalled = false;
         let alignedCalled = false;
@@ -1221,9 +1223,8 @@ describe('MessageSession', () => {
             })
         };
         await s.run(mockSystem);
-        assert.strictEqual(alignedCalled, false);
-        // TTS mode with low emotion: no independent call either (only aligned path checked)
-        // Independent is only called in non-TTS path
+        assert.strictEqual(alignedCalled, false, '低于阈值不该触发对齐');
+        assert.strictEqual(independentCalled, false, 'TTS 模式走的是对齐路径，独立情绪不该被调用');
     });
 
     it('run skips if cancelled', async () => {

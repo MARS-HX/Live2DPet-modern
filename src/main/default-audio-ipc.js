@@ -11,16 +11,26 @@ function registerDefaultAudioIPC(ctx, ipcMain, deps) {
     let generating = false;
 
     ipcMain.handle('generate-default-audio', async (event, phrases, styleId) => {
+        // The guards sit OUTSIDE the try/finally on purpose: the gate below may only be
+        // cleared by the call that set it. With them inside, a rejected call ran the
+        // finally and unlocked the gate while the first run was still going — a third
+        // click then started a genuinely concurrent second run (interleaved styleId, and
+        // both wiping the output directory).
+        let available = false;
         try {
-            if (!ctx.ttsService || !ctx.ttsService.isAvailable()) {
-                return { success: false, error: 'TTS not available' };
-            }
-            if (!Array.isArray(phrases) || phrases.length === 0) {
-                return { success: false, error: 'no phrases' };
-            }
-            if (generating) return { success: false, error: 'already generating' };
-            generating = true;
-
+            available = !!(ctx.ttsService && ctx.ttsService.isAvailable());
+        } catch (e) {
+            available = false;   // 守卫本身也不许把异常抛出 handler
+        }
+        if (!available) {
+            return { success: false, error: 'TTS not available' };
+        }
+        if (!Array.isArray(phrases) || phrases.length === 0) {
+            return { success: false, error: 'no phrases' };
+        }
+        if (generating) return { success: false, error: 'already generating' };
+        generating = true;
+        try {
             const audioDir = path.join(app.getPath('userData'), 'default-audio');
             if (!fs.existsSync(audioDir)) fs.mkdirSync(audioDir, { recursive: true });
 

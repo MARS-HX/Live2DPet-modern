@@ -81,10 +81,15 @@ describe('generate-default-audio', () => {
         assert.deepStrictEqual(wavs(h.audioDir), ['default_0.wav']);
     });
 
-    it('合成抛错后 styleId 必须恢复（回归：只在成功路径恢复）', async () => {
-        const h = makeHarness({ styleId: 7, synthesize: () => { throw new Error('boom'); } });
-        await h.run(['甲'], 42);
-        assert.strictEqual(h.ttsService.styleId, 7, 'styleId 不该被一次失败的生成永久改掉');
+    it('生成过程中途失败后 styleId 必须恢复（回归：恢复只写在成功路径上）', async () => {
+        // 注意：synthesize 自身抛的异常会被逐句 try/catch 吞掉，旧实现末尾照样恢复 styleId，
+        // 所以那种失败区分不出新旧实现（这条用例先前正是被证伪的那一条）。
+        // 这里用能逃出内层 catch 的失败：phrases 非法时，旧实现是在 try 内部读
+        // phrases.length 才抛的 —— 那时 styleId 已经被改成 42 了。
+        const h = makeHarness({ styleId: 7, synthesize: () => Buffer.from('wav') });
+        const res = await h.run(undefined, 42);
+        assert.strictEqual(res.success, false);
+        assert.strictEqual(h.ttsService.styleId, 7, 'styleId 不该停在本次传入的值上');
     });
 
     it('phrases 非法时干净报错，且不动已有文件（回归：TypeError 之前文件已被删）', async () => {
@@ -130,13 +135,35 @@ describe('generate-default-audio', () => {
 
         const first = h.run(['甲']);
         await new Promise((r) => setTimeout(r, 5));   // 让第一次走到 saveConfigFile
-        const second = await h.run(['乙']);
+        // 第二次也要套 race：旧实现没有闸门，它会 await 同一个门，直接把测试挂死
+        // （挂死比失败更糟 —— node:test 要等事件循环空下来才打印总结，整个套件会看起来卡住）。
+        const second = await Promise.race([
+            h.run(['乙']),
+            new Promise((r) => { setTimeout(() => r({ success: 'TIMEOUT' }), 300); }),
+        ]);
+        assert.notStrictEqual(second.success, 'TIMEOUT', '第二次不该进入合成');
         assert.strictEqual(second.success, false);
         assert.strictEqual(second.error, 'already generating');
+
+        // 关键补充：被拒绝的那次**不能**把闸门放开。旧实现把守卫放在 try/finally 里，
+        // 于是第 2 次跑 finally 把 generating 清成 false，第 3 次就会真的并发执行。
+        // 用 race 兜住：旧实现下第 3 次会卡在同一个门上，这里必须判定失败而不是把测试挂死。
+        const third = await Promise.race([
+            h.run(['丙']),
+            new Promise((r) => { setTimeout(() => r({ success: 'TIMEOUT' }), 300); }),
+        ]);
+        assert.notStrictEqual(third.success, 'TIMEOUT',
+            '第三次调用不该进入合成（它卡住了，说明闸门被第 2 次调用放开了）');
+        assert.strictEqual(third.success, false, '闸门必须仍然关着');
+        assert.strictEqual(third.error, 'already generating');
 
         release();
         assert.strictEqual((await first).success, true);
         assert.strictEqual(h.ttsService.styleId, 7);
+
+        // 第一次结束后闸门才该打开
+        const fourth = await h.run(['丁']);
+        assert.strictEqual(fourth.success, true, '前一次结束后应能再次生成');
     });
 
     it('TTS 不可用时直接返回错误，不碰磁盘', async () => {

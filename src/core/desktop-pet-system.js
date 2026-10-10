@@ -391,6 +391,23 @@ class DesktopPetSystem {
         else if (!wanted && this._companionVoiceActive) this._stopCompanionVoice();
     }
 
+    /**
+     * Record a failed voice start and decide whether to keep retrying.
+     *
+     * A whitelist of known permanent reasons was not enough: the most permanent failure
+     * of all — the native engine is installed but refuses to load — arrives here as a raw
+     * error message from the main process. _syncCompanionVoice() runs from the 1s focus
+     * tick, so an unlisted reason meant a 1 Hz restart storm (a fresh asrStart IPC, which
+     * rebuilds the recogniser, plus getUserMedia, every second, forever). Three
+     * consecutive failures — or one recognised permanent reason — switches voice off.
+     */
+    _noteVoiceFailure(reason) {
+        this._voiceFailureCount = (this._voiceFailureCount || 0) + 1;
+        if (DesktopPetSystem.PERMANENT_VOICE_FAILURES.has(reason) || this._voiceFailureCount >= 3) {
+            this.companionVoiceInput = false;
+        }
+    }
+
     _startCompanionVoice() {
         // Prefer the fully offline engine. Electron exposes webkitSpeechRecognition
         // but has no Google API key behind it, so that path always fails with
@@ -414,14 +431,7 @@ class DesktopPetSystem {
                 onError: (reason) => {
                     console.log(`[CompanionVoice] offline engine unavailable: ${reason}`);
                     this._companionVoiceFailedReason = reason;
-                    // Anything that will fail the same way next second has to switch
-                    // voice input off: _syncCompanionVoice() runs from the 1s focus
-                    // tick, so an unlisted reason meant a 1 Hz restart storm — a fresh
-                    // asrStart IPC (new native recogniser) plus getUserMedia every
-                    // second, forever. A denied microphone is the easy way in.
-                    if (DesktopPetSystem.PERMANENT_VOICE_FAILURES.has(reason)) {
-                        this.companionVoiceInput = false;
-                    }
+                    this._noteVoiceFailure(reason);
                     this._companionVoiceActive = false;
                     this._offlineCapture = null;
                 },
@@ -436,7 +446,12 @@ class DesktopPetSystem {
             if (!res.ok) {
                 console.log(`[CompanionVoice] offline listening not started: ${res.reason}`);
                 this._companionVoiceActive = false;
+                // Some permanent reasons come back as a return value rather than through
+                // onError (no_bridge / no_getusermedia / no_audioworklet), so they have to
+                // be counted here too — otherwise they retry once per second as well.
+                if (res.reason !== 'cancelled') this._noteVoiceFailure(res.reason);
             } else {
+                this._voiceFailureCount = 0;
                 console.log('[CompanionVoice] listening (offline)');
             }
         });
@@ -497,6 +512,7 @@ class DesktopPetSystem {
             rec.start();
             this._companionRecognition = rec;
             this._companionVoiceActive = true;
+            this._voiceFailureCount = 0;
             console.log('[CompanionVoice] listening');
         } catch (e) {
             console.log('[CompanionVoice] failed to start:', e.message);

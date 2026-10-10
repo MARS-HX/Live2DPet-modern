@@ -364,6 +364,10 @@ describe('createI18nHelper', () => {
         const zh = mt('tray.quit');
         assert.strictEqual(typeof en, 'string');
         assert.strictEqual(typeof zh, 'string');
+        // 只断言 typeof 的话，一个完全忽略 _cachedLang 的实现也能通过这一组用例。
+        assert.notStrictEqual(en, zh, '切换语言必须真的换掉文案');
+        assert.strictEqual(en, 'Quit');
+        assert.strictEqual(zh, '退出');
     });
 
     it('falls back to en for missing locale', () => {

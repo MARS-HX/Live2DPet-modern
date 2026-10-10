@@ -79,6 +79,104 @@ function extractFunction(src, name) {
     return null;
 }
 
+// ========== 「外部字符串未转义就拼进 HTML」的检测器 ==========
+//
+// 抽成模块级函数是为了能被正向对照用例单独验证：护栏自己错掉的话，
+// 它会一边放过真实注入、一边让人以为项目是安全的。
+
+/** 取出一行里所有 ${...} 的内部表达式与起始下标（含嵌套大括号）。 */
+function interpolationsOf(line) {
+    const out = [];
+    for (let i = 0; i < line.length - 1; i++) {
+        if (line[i] !== '$' || line[i + 1] !== '{') continue;
+        let depth = 0;
+        let j = i + 1;
+        for (; j < line.length; j++) {
+            if (line[j] === '{') depth++;
+            else if (line[j] === '}') {
+                depth--;
+                if (depth === 0) break;
+            }
+        }
+        out.push({ expr: line.slice(i + 2, j), at: i });
+        i = j;
+    }
+    return out;
+}
+
+/**
+ * 这个插值是不是落在「会解析成标记」的位置？
+ *   - 属性值：`="${` / `='${` / 未加引号的 `=${`
+ *   - 文本节点：`>${`
+ *   - 所在模板串里已经出现过 `<`，或同一行在拼 innerHTML 且含标签
+ * （局限：HTML 标签与插值分散在不同行时会漏检；本项目的模板都是一行一个。）
+ */
+function isDangerousPosition(line, at) {
+    const before = line.slice(0, at);
+    if (/[=][ \t]*['"][ \t]*$/.test(before)) return true;
+    if (/[=][ \t]*$/.test(before)) return true;
+    if (/>[ \t]*$/.test(before)) return true;
+    const tick = before.lastIndexOf('`');
+    if ((tick >= 0 ? before.slice(tick) : before).includes('<')) return true;
+    return line.includes('innerHTML') && line.includes('<');
+}
+
+/** `${cond ? 'checked' : ''}` 这类三元：两个分支都是字面量，条件本身的值不进 HTML。 */
+function isLiteralTernary(expr) {
+    const q = expr.indexOf('?');
+    if (q < 0) return false;
+    const colon = expr.lastIndexOf(':');
+    if (colon < q) return false;
+    const literal = (s) => {
+        const t = s.trim();
+        if (!t) return false;
+        if ((t.startsWith("'") && t.endsWith("'")) || (t.startsWith('"') && t.endsWith('"'))) return true;
+        return /^-?\d+(\.\d+)?$/.test(t) || t === 'true' || t === 'false';
+    };
+    return literal(expr.slice(q + 1, colon)) && literal(expr.slice(colon + 1));
+}
+
+/** 返回 [{line, name, expr}]：risky 变量未经 safeWrappers 包裹就进了危险位置。 */
+function findUnsafeInterpolations(source, risky, safeWrappers) {
+    const offenders = [];
+    source.split(LF).forEach((line, idx) => {
+        for (const { expr, at } of interpolationsOf(line)) {
+            if (!isDangerousPosition(line, at)) continue;
+            if (isLiteralTernary(expr)) continue;
+            for (const name of risky) {
+                if (!expr.includes(name)) continue;
+                if (safeWrappers.some((w) => expr.includes(w))) continue;
+                offenders.push({ line: idx + 1, name, expr });
+            }
+        }
+    });
+    return offenders;
+}
+
+/**
+ * 拼接式注入：`el.innerHTML = '前缀' + 外部字符串 + '后缀'`。
+ *
+ * 这条单独一路是必要的：「innerHTML 只能赋值为单个字符串字面量」那条只扫 HTML 文件，
+ * 而本检测的插值分支只认 `${...}`，两者都看不见 `'a' + x` 这种写法
+ * （当年日记弹窗正是栽在这里）。
+ */
+function findUnsafeConcatenation(source, risky, safeWrappers) {
+    const offenders = [];
+    source.split(LF).forEach((line, idx) => {
+        if (!line.includes('.innerHTML')) return;
+        const eq = line.indexOf('=');
+        if (eq < 0) return;
+        const rhs = line.slice(eq + 1);
+        if (!rhs.includes('+')) return;   // 单个字面量直接赋值不在此列
+        for (const name of risky) {
+            if (!rhs.includes(name)) continue;
+            if (safeWrappers.some((w) => rhs.includes(w))) continue;
+            offenders.push({ line: idx + 1, name, expr: rhs.trim().slice(0, 60) });
+        }
+    });
+    return offenders;
+}
+
 describe('渲染层安全护栏', () => {
     it('扫描范围合理', () => {
         assert.ok(HTML_FILES.length >= 4, `至少应有 4 个 HTML，实际 ${HTML_FILES.length}`);
@@ -201,57 +299,79 @@ describe('渲染层安全护栏', () => {
         // 图片文件名与目录。Windows 文件名不能带双引号，但 macOS/Linux 可以，
         // 而 `${name}` 落在 value="..." 里就会闭合属性并注入标记。设置窗暴露了整条
         // preload 桥（saveConfig / openExternal / dshRun），CSP 又允许内联处理器。
-        const RISKY = ['f.file', 'f.emotionName', 'expr.name', 'expr.file', 'm.name', 'm.group', 'folderPath'];
+        const RISKY = ['f.file', 'f.emotionName', 'expr.name', 'expr.file', 'm.name', 'm.group', 'folderPath', 'diag.serviceType'];
         const SAFE_WRAPPERS = ['escapeHtml(', 'encodeURIComponent('];
-        const targets = [CHAT_WINDOW, path.join(ROOT, 'src', 'renderer', 'settings-ui.js')];
-
-        /** 取出一行里所有 ${...} 的内部表达式与起始下标（含嵌套大括号）。 */
-        const interpolations = (line) => {
-            const out = [];
-            for (let i = 0; i < line.length - 1; i++) {
-                if (line[i] !== '$' || line[i + 1] !== '{') continue;
-                let depth = 0;
-                let j = i + 1;
-                for (; j < line.length; j++) {
-                    if (line[j] === '{') depth++;
-                    else if (line[j] === '}') {
-                        depth--;
-                        if (depth === 0) break;
-                    }
-                }
-                out.push({ expr: line.slice(i + 2, j), at: i });
-                i = j;
-            }
-            return out;
-        };
-
-        /**
-         * 只有落在「属性值」或「文本节点」位置的插值才可能注入标记。
-         * 判据：往前找最近的非空白字符是 = 或 >。
-         * （`textContent = \`…${x}\`` 这类不解析 HTML，`${x ? 'checked' : ''}` 这类
-         *   三元产出的是固定字面量，都不算。）
-         */
-        const isDangerousPosition = (line, at) => {
-            let k = at - 1;
-            while (k >= 0 && (line[k] === ' ' || line[k] === '\t')) k--;
-            return k >= 0 && (line[k] === '=' || line[k] === '>');
-        };
+        const targets = HTML_FILES.concat(
+            fs.readdirSync(path.join(ROOT, 'src', 'renderer'))
+                .filter((f) => f.endsWith('.js'))
+                .map((f) => path.join(ROOT, 'src', 'renderer', f)));
 
         const offenders = [];
         for (const file of targets) {
-            read(file).split(LF).forEach((line, idx) => {
-                for (const { expr, at } of interpolations(line)) {
-                    if (!isDangerousPosition(line, at)) continue;
-                    for (const name of RISKY) {
-                        if (!expr.includes(name)) continue;
-                        if (SAFE_WRAPPERS.some((w) => expr.includes(w))) continue;
-                        offenders.push(`${rel(file)}:${idx + 1}  未转义地插值 ${name} → \${${expr.slice(0, 50)}}`);
-                    }
-                }
-            });
+            const src = read(file);
+            for (const hit of findUnsafeInterpolations(src, RISKY, SAFE_WRAPPERS)) {
+                offenders.push(`${rel(file)}:${hit.line}  未转义地插值 ${hit.name} → \${${hit.expr.slice(0, 50)}}`);
+            }
+            for (const hit of findUnsafeConcatenation(src, RISKY, SAFE_WRAPPERS)) {
+                offenders.push(`${rel(file)}:${hit.line}  拼接进 innerHTML 的 ${hit.name} → ${hit.expr}`);
+            }
         }
         assert.deepStrictEqual(offenders, [],
             `这些值来自模型素材/文件名，必须先过 escapeHtml() 再拼进 HTML：\n  ${offenders.join('\n  ')}`);
+    });
+
+    it('转义护栏自身要能检出样例、且不误报（正向对照）', () => {
+        // 护栏自己写错的话最糟：它会放过真实注入，同时让人以为项目是安全的。
+        // 所以拿构造样例把判据钉死。
+        const RISKY = ['f.file', 'expr.name'];
+        const SAFE = ['escapeHtml(', 'encodeURIComponent('];
+
+        const mustCatch = [
+            ['属性值位置 value="${…}"', 'row.innerHTML = `<input value="${expr.name}">`;'],
+            ['属性值位置 alt="${…}"', 'row.innerHTML = `<img alt="${f.file}">`;'],
+            ['数据属性 data-name="${…}"', 'row.innerHTML = `<i data-name="${expr.name}">x</i>`;'],
+            ['属性值里带空格', 'row.innerHTML = `<i title="${ f.file }">x</i>`;'],
+            ['文本节点位置 >${…}', 'row.innerHTML = `<span>${f.file}</span>`;'],
+            ['插值在标签之前', 'row.innerHTML = `${f.file}<span>x</span>`;'],
+            ['三元分支里带变量', 'row.innerHTML = `<i data-x="${f.idle ? expr.name : 0}">`;'],
+        ];
+        for (const [why, src] of mustCatch) {
+            assert.ok(findUnsafeInterpolations(src, RISKY, SAFE).length > 0,
+                `护栏漏检（${why}）：${src}`);
+        }
+
+        const mustNotCatch = [
+            ['已转义', 'row.innerHTML = `<input value="${escapeHtml(expr.name)}">`;'],
+            ['已 encodeURIComponent', 'row.innerHTML = `<img src="${encodeURIComponent(f.file)}">`;'],
+            ['两个分支都是字面量的三元', 'row.innerHTML = `<input ${f.idle ? 1 : 0}>`;'],
+            ['textContent 不解析 HTML', 'el.textContent = `${f.file} 已处理`;'],
+            ['与 HTML 无关的普通代码', 'const p = `${f.file}/x`;'],
+        ];
+        for (const [why, src] of mustNotCatch) {
+            assert.deepStrictEqual(findUnsafeInterpolations(src, RISKY, SAFE), [],
+                `护栏误报（${why}）：${src}`);
+        }
+
+        // 拼接式注入单独一路：`innerHTML = '前缀' + 外部值`
+        const CONCAT_RISKY = ['f.file', 'expr.name', 'diary', 'diag.serviceType'];
+        const mustCatchConcat = [
+            ['拼接的日记正文', "box.innerHTML = '<div>' + diary + '</div>';"],
+            ['拼接的模型名', "el.innerHTML = 'Backend: ' + diag.serviceType + '<br>';"],
+        ];
+        for (const [why, src] of mustCatchConcat) {
+            assert.ok(findUnsafeConcatenation(src, CONCAT_RISKY, SAFE).length > 0,
+                `护栏漏检拼接注入（${why}）：${src}`);
+        }
+        const mustNotCatchConcat = [
+            ['已转义', "el.innerHTML = 'Backend: ' + escapeHtml(diag.serviceType) + '<br>';"],
+            ['整行已转义', "el.innerHTML = 'TTS:<br>' + lines.map(escapeHtml).join('<br>');"],
+            ['纯字面量', "el.innerHTML = '<b>ok</b>';"],
+            ['textContent', "el.textContent = 'Backend: ' + diag.serviceType;"],
+        ];
+        for (const [why, src] of mustNotCatchConcat) {
+            assert.deepStrictEqual(findUnsafeConcatenation(src, CONCAT_RISKY, SAFE), [],
+                `护栏误报（${why}）：${src}`);
+        }
     });
 
     it('appendPlainText：模型输出里的 HTML 只会变成文本节点，换行变成 <br>', () => {

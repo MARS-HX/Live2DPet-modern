@@ -31,7 +31,7 @@ function makeStore() {
     return store;
 }
 
-/** 真实 _generateSummary 结束时会推进 lastSummaryIndex，这里照此模拟。 */
+/** 真实 _generateSummary 结束时会推进 lastSummaryIndex（segment 至少 4 条才总结）。 */
 function stubSummary(store) {
     const calls = { count: 0 };
     store._generateSummary = async function () {
@@ -55,20 +55,23 @@ describe('ConversationStore 历史裁剪', () => {
         assert.strictEqual(store.lastSummaryIndex, 4, '7 - 3 = 4；旧实现在这里会留在 7');
     });
 
-    it('历史到达上限后阶段总结仍会继续触发（回归：到 300 条就永久停摆）', async () => {
+    it('历史到达上限后仍会继续产生总结（回归：到上限就永久停摆）', async () => {
+        // 这条**不替换 _generateSummary**：之前用替身断言"替身被调用了几次"，
+        // 等于测桩件本身。真实实现要求 segment 至少 4 条才总结（src 里 segment.length < 4 直接返回），
+        // 所以这里让 summaryInterval=5、maxEntries=8，跑 15 条，看 summaries 是否持续增长。
         const store = makeStore();
-        store.maxEntries = 5;
-        store.summaryInterval = 2;
-        const calls = stubSummary(store);
+        store.maxEntries = 8;
+        store.summaryInterval = 5;
 
-        for (let i = 0; i < 6; i++) await store.add('user', 'm' + i);
-        const afterCap = calls.count;
-        assert.ok(afterCap >= 3, `前 6 条应已总结至少 3 次，实际 ${afterCap}`);
-        assert.strictEqual(store.history.length, 5);
+        for (let i = 0; i < 15; i++) await store.add('user', 'm' + i);
 
-        for (let i = 6; i < 12; i++) await store.add('user', 'm' + i);
-        assert.ok(calls.count > afterCap,
-            '历史被裁到上限之后仍必须继续总结（旧实现正是在这里停摆）');
+        assert.strictEqual(store.history.length, 8, '历史应被裁到上限');
+        assert.ok(store.summaries.length >= 3,
+            `历史到上限后仍必须继续总结；实际只产生了 ${store.summaries.length} 条`);
+        const last = store.summaries[store.summaries.length - 1];
+        assert.ok(last.summary && last.messageCount >= 4, '总结内容与计数应当有效');
+        assert.ok(store.lastSummaryIndex > 0 && store.lastSummaryIndex <= store.history.length,
+            'lastSummaryIndex 应停在一个有效位置');
     });
 
     it('未到上限时索引不受影响', async () => {

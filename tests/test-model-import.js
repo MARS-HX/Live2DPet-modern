@@ -37,10 +37,27 @@ describe('suggestParamMapping', () => {
     });
 
     it('返回的键与 PARAM_FUZZY_MAP 完全对应，未命中的一律为 null', () => {
+        // 期望键集写成字面量：如果拿实现自己遍历的那张表来断言，这条只能证明
+        // "实现没有脱离那张表"，把表里的候选别名删掉也照样绿。
+        const expectedKeys = ['angleX', 'angleY', 'angleZ', 'bodyAngleX', 'eyeBallX', 'eyeBallY'];
+        assert.deepStrictEqual(Object.keys(PARAM_FUZZY_MAP).sort(), expectedKeys.slice().sort(),
+            'PARAM_FUZZY_MAP 的键集变了，请同步本用例的期望值');
+
         const out = suggestParamMapping([]);
-        for (const key of Object.keys(PARAM_FUZZY_MAP)) {
-            assert.ok(key in out, `缺少映射键 ${key}`);
-            assert.strictEqual(out[key], null);
+        assert.deepStrictEqual(Object.keys(out).sort(), expectedKeys.slice().sort());
+        for (const key of expectedKeys) {
+            assert.strictEqual(out[key], null, `${key} 不该凭空命中`);
+        }
+    });
+
+    it('每个映射键的候选别名都能命中真实实现', () => {
+        // 逐个别名单独喂进去，必须都能认出来（防止候选表被误删/写错）。
+        for (const [key, candidates] of Object.entries(PARAM_FUZZY_MAP)) {
+            assert.ok(Array.isArray(candidates) && candidates.length > 0, `${key} 的候选表不该为空`);
+            for (const alias of candidates) {
+                const out = suggestParamMapping([alias]);
+                assert.strictEqual(out[key], alias, `别名 ${alias} 应当命中 ${key}`);
+            }
         }
     });
 });

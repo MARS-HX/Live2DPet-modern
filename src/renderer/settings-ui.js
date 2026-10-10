@@ -1175,7 +1175,9 @@ document.getElementById('btn-diagnose-tts')?.addEventListener('click', async () 
             'Configured: ' + (diag.configured ? 'Yes' : 'No (API key missing)'),
             'Available: ' + (diag.isAvailable ? 'Yes' : 'No')
         ];
-        el.innerHTML = 'TTS Diagnosis:<br>' + lines.join('<br>');
+        // 每一行都可能含 diag.serviceType 这类来自配置的值（外部可写）——
+        // 与日记弹窗同一类，所以整行转义后再拼，不要让配置决定这里能插入什么标记。
+        el.innerHTML = 'TTS Diagnosis:<br>' + lines.map(escapeHtml).join('<br>');
         el.className = diag.isAvailable ? 'status success' : 'status error';
     } catch(e) {
         el.textContent = '诊断失败: ' + e.message;
