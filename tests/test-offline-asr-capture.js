@@ -238,4 +238,34 @@ describe('OfflineAsrCapture — capturing', () => {
         assert.strictEqual(env.ports.length, 1, 'a second start must not build another worklet node');
         await cap.stop();
     });
+
+    it('并发 start() 只能开一支麦克风（回归：_active 要到函数末尾才置位）', async () => {
+        // 上面那条是串行 await，_active 早已为真，测不到真正的并发窗口。
+        // 真实触发：双击 index.html 上的「测试离线语音」按钮。
+        const mod = loadModule();
+        let release;
+        const gate = new Promise((r) => { release = r; });
+        let mediaCalls = 0;
+        const realGetUserMedia = globalThis.navigator.mediaDevices.getUserMedia;
+        globalThis.navigator.mediaDevices.getUserMedia = async (...args) => {
+            mediaCalls += 1;
+            await gate;
+            return realGetUserMedia(...args);
+        };
+
+        const cap = new mod.OfflineAsrCapture({ logger: QUIET, onText: () => {} });
+        const first = cap.start();
+        await new Promise((r) => setTimeout(r, 0));   // 让第一次走到 getUserMedia 的 await
+        const second = cap.start();                   // 旧实现在这里会再开一支
+        release();
+        const [a, b] = await Promise.all([first, second]);
+
+        assert.strictEqual(mediaCalls, 1, '两次并发 start 只能调用一次 getUserMedia');
+        assert.strictEqual(a.ok, true);
+        assert.strictEqual(b.ok, true);
+        assert.strictEqual(env.ports.length, 1, '只能建一个 worklet 节点（旧实现会建两个并都往识别器喂数据）');
+        assert.strictEqual(cap.active, true);
+        await cap.stop();
+        assert.strictEqual(env.media.stopped, true, '停止必须能真正释放麦克风');
+    });
 });

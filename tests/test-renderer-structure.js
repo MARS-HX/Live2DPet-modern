@@ -22,13 +22,21 @@ const BACKSLASH = 92;   // 用码位比较，免得本文件自己踩转义坑
 
 /**
  * 逐字符扫描源码，返回每行起始处的花括号深度与最终深度。
- * 会跳过行注释、块注释、字符串与模板串（含其中的转义）。
+ * 会跳过行注释、块注释、字符串、模板串（含其中的转义）以及**正则字面量**。
+ *
+ * 正则那段不是洁癖：`escapeHtml` 里的 `/"/g` 这类含引号的正则，会让不认识正则的
+ * 扫描器把那个引号当成字符串开头，从此深度全歪 —— 护栏会开始误报。
  */
 function scanDepths(src) {
     const depthAt = [];
     let depth = 0;
     let i = 0;
     let line = 1;
+    let last = '';   // 最近一个「有意义的字符」，用来判断 / 是正则还是除号
+    // 这些字符之后出现的 / 只可能是正则字面量（标准启发式）。
+    // 刻意**不含** < 和 > —— 本文件里 HTML 闭合标签 `</div>` 遍地都是，把紧跟 < 的 /
+    // 当正则会把整段模板吞掉；而「小于号后面跟正则」这种写法现实中不存在。
+    const regexCanFollow = (ch) => ch === '' || '([{,;:=!&|?+-*%~^'.includes(ch);
     while (i < src.length) {
         const c = src[i];
         const n = src[i + 1];
@@ -46,6 +54,22 @@ function scanDepths(src) {
             i += 2;
             continue;
         }
+        if (c === '/' && regexCanFollow(last)) {
+            i++;
+            let inClass = false;
+            while (i < src.length && src[i] !== '\n') {
+                const ch = src[i];
+                if (ch.charCodeAt(0) === BACKSLASH) { i += 2; continue; }
+                if (ch === '[') inClass = true;
+                else if (ch === ']') inClass = false;
+                else if (ch === '/' && !inClass) break;
+                i++;
+            }
+            i++;   // 跳过收尾的 /
+            while (i < src.length && /[a-z]/i.test(src[i])) i++;   // 标志位
+            last = '/';
+            continue;
+        }
         if (c === "'" || c === '"' || c === '`') {
             const quote = c;
             i++;
@@ -55,11 +79,13 @@ function scanDepths(src) {
                 i++;
             }
             i++;
+            last = quote;
             continue;
         }
         if (c === '{') depth++;
         else if (c === '}') depth--;
         if (c === '\n') { line++; depthAt[line] = depth; }
+        if (c !== ' ' && c !== '\t') last = c;
         i++;
     }
     return { depthAt, finalDepth: depth };

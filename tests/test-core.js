@@ -1047,6 +1047,39 @@ describe('ModelAdapter', () => {
         assert.strictEqual(adapter.config.bottomAlignOffset, 0.3);
     });
 
+    it('ImageAdapter 订阅说话状态，destroy 时必须退订（回归：监听器永不解绑）', async () => {
+        // preload 的 on* 是 ipcRenderer.on，不会自己消失；而 load() 每次「保存模型配置」
+        // 都会重跑一遍，于是每热重载一次就多留一个常驻监听器，各自驱动一个已成孤儿的 <img>。
+        let live = 0;
+        let subscribes = 0;
+        global.window.electronAPI = {
+            onTalkingStateChanged: () => {
+                subscribes += 1;
+                live += 1;
+                return () => { live -= 1; };
+            },
+        };
+        const img = { style: {}, src: '' };
+        const realGetElementById = global.document.getElementById;
+        global.document.getElementById = (id) => (id === 'static-image' ? img : null);
+        try {
+            const adapter = new ctx.ImageAdapter({ type: 'image', staticImagePath: '/a.png' });
+            await adapter.load({ appendChild() {} });
+            assert.strictEqual(live, 1, '加载后应恰好有一个监听器');
+
+            adapter.destroy();
+            assert.strictEqual(live, 0, 'destroy 必须退订，否则每次热重载都泄漏一个');
+
+            await adapter.load({ appendChild() {} });
+            assert.strictEqual(live, 1, '重新加载后仍应只有一个，而不是累加');
+            adapter.destroy();
+            assert.strictEqual(live, 0);
+            assert.strictEqual(subscribes, 2);
+        } finally {
+            global.document.getElementById = realGetElementById;
+        }
+    });
+
     it('Live2DAdapter stores paramMapping config', () => {
         const config = {
             type: 'live2d',

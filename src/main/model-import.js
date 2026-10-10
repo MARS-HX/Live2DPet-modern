@@ -15,12 +15,18 @@ const PARAM_FUZZY_MAP = {
 
 function suggestParamMapping(parameterIds) {
     const suggested = {};
+    // Live2D's CDI format allows a Parameters entry with no Id (only Name / GroupId),
+    // and callers push whatever the file contains. Without this guard `p.toLowerCase()`
+    // threw a TypeError, which the import handler's catch turned into a generic
+    // success:false — taking the parameter, expression and motion lists with it.
+    const ids = (Array.isArray(parameterIds) ? parameterIds : [])
+        .filter((p) => typeof p === 'string' && p);
     for (const [key, candidates] of Object.entries(PARAM_FUZZY_MAP)) {
         const match = candidates.find(c =>
-            parameterIds.some(p => p.toLowerCase() === c.toLowerCase())
+            ids.some(p => p.toLowerCase() === c.toLowerCase())
         );
         if (match) {
-            suggested[key] = parameterIds.find(p => p.toLowerCase() === match.toLowerCase());
+            suggested[key] = ids.find(p => p.toLowerCase() === match.toLowerCase());
         } else {
             suggested[key] = null;
         }

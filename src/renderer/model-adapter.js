@@ -314,7 +314,11 @@ class ImageAdapter extends ModelAdapter {
 
         // Listen for talking state changes
         if (window.electronAPI && window.electronAPI.onTalkingStateChanged) {
-            window.electronAPI.onTalkingStateChanged((isTalking) => {
+            // Keep the unsubscribe: preload's on* helpers are ipcRenderer.on, which
+            // never goes away on its own. load() runs again on every model-config
+            // save, so ignoring the return left one live listener per reload — each
+            // old one still driving its own (orphaned) <img>.
+            this._offTalking = window.electronAPI.onTalkingStateChanged((isTalking) => {
                 this.isTalking = isTalking;
                 if (!this.currentEmotion) {
                     this._updateDisplay();
@@ -403,6 +407,10 @@ class ImageAdapter extends ModelAdapter {
     }
 
     destroy() {
+        if (typeof this._offTalking === 'function') {
+            try { this._offTalking(); } catch (e) { /* already gone */ }
+        }
+        this._offTalking = null;
         if (this.imgElement) {
             this.imgElement.src = '';
             this.imgElement.style.display = 'none';

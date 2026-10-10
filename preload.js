@@ -141,7 +141,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onPlayExpression: (cb) => ipcRenderer.on('play-expression', (e, name) => cb(name)),
     onRevertExpression: (cb) => ipcRenderer.on('revert-expression', () => cb()),
     onPlayMotion: (cb) => ipcRenderer.on('play-motion', (e, group, index) => cb(group, index)),
-    onTalkingStateChanged: (cb) => ipcRenderer.on('talking-state-changed', (e, isTalking) => cb(isTalking)),
+    onTalkingStateChanged: (cb) => {
+        // Returns an unsubscribe function. These are ipcRenderer.on registrations and
+        // a model-config save reloads the adapter, which re-registers them — with no way
+        // to detach, every reload left another live listener driving an orphaned element.
+        const handler = (e, isTalking) => cb(isTalking);
+        ipcRenderer.on('talking-state-changed', handler);
+        return () => ipcRenderer.removeListener('talking-state-changed', handler);
+    },
     onPetHoverState: (cb) => ipcRenderer.on('pet-hover-state', (e, hovering) => cb(hovering)),
     onPetHit: (cb) => ipcRenderer.on('pet-hit', (e, data) => cb(data)),
     onModelConfigUpdate: (cb) => ipcRenderer.on('model-config-update', (e, config) => cb(config)),

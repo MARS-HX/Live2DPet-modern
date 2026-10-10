@@ -196,6 +196,64 @@ describe('渲染层安全护栏', () => {
         assert.deepStrictEqual(bad, [], '日记不得再进入 innerHTML');
     });
 
+    it('外部来源的字符串拼进 HTML 时必须转义（回归：模型素材名可闭合属性注入）', () => {
+        // 这些值都来自本应用之外：Live2D 模型 JSON 里的表情/动作/参数名、用户选的
+        // 图片文件名与目录。Windows 文件名不能带双引号，但 macOS/Linux 可以，
+        // 而 `${name}` 落在 value="..." 里就会闭合属性并注入标记。设置窗暴露了整条
+        // preload 桥（saveConfig / openExternal / dshRun），CSP 又允许内联处理器。
+        const RISKY = ['f.file', 'f.emotionName', 'expr.name', 'expr.file', 'm.name', 'm.group', 'folderPath'];
+        const SAFE_WRAPPERS = ['escapeHtml(', 'encodeURIComponent('];
+        const targets = [CHAT_WINDOW, path.join(ROOT, 'src', 'renderer', 'settings-ui.js')];
+
+        /** 取出一行里所有 ${...} 的内部表达式与起始下标（含嵌套大括号）。 */
+        const interpolations = (line) => {
+            const out = [];
+            for (let i = 0; i < line.length - 1; i++) {
+                if (line[i] !== '$' || line[i + 1] !== '{') continue;
+                let depth = 0;
+                let j = i + 1;
+                for (; j < line.length; j++) {
+                    if (line[j] === '{') depth++;
+                    else if (line[j] === '}') {
+                        depth--;
+                        if (depth === 0) break;
+                    }
+                }
+                out.push({ expr: line.slice(i + 2, j), at: i });
+                i = j;
+            }
+            return out;
+        };
+
+        /**
+         * 只有落在「属性值」或「文本节点」位置的插值才可能注入标记。
+         * 判据：往前找最近的非空白字符是 = 或 >。
+         * （`textContent = \`…${x}\`` 这类不解析 HTML，`${x ? 'checked' : ''}` 这类
+         *   三元产出的是固定字面量，都不算。）
+         */
+        const isDangerousPosition = (line, at) => {
+            let k = at - 1;
+            while (k >= 0 && (line[k] === ' ' || line[k] === '\t')) k--;
+            return k >= 0 && (line[k] === '=' || line[k] === '>');
+        };
+
+        const offenders = [];
+        for (const file of targets) {
+            read(file).split(LF).forEach((line, idx) => {
+                for (const { expr, at } of interpolations(line)) {
+                    if (!isDangerousPosition(line, at)) continue;
+                    for (const name of RISKY) {
+                        if (!expr.includes(name)) continue;
+                        if (SAFE_WRAPPERS.some((w) => expr.includes(w))) continue;
+                        offenders.push(`${rel(file)}:${idx + 1}  未转义地插值 ${name} → \${${expr.slice(0, 50)}}`);
+                    }
+                }
+            });
+        }
+        assert.deepStrictEqual(offenders, [],
+            `这些值来自模型素材/文件名，必须先过 escapeHtml() 再拼进 HTML：\n  ${offenders.join('\n  ')}`);
+    });
+
     it('appendPlainText：模型输出里的 HTML 只会变成文本节点，换行变成 <br>', () => {
         const src = read(CHAT_WINDOW);
         const fnSource = extractFunction(src, 'appendPlainText');

@@ -278,8 +278,16 @@
                 console.log('[DesktopPet] Model loaded, type:', currentAdapter.getType());
             } catch (error) {
                 console.warn('[DesktopPet] Model load failed, falling back to placeholder:', error);
-                currentAdapter = new NullAdapter({});
-                await currentAdapter.load(document.getElementById('pet-container'));
+                // The fallback itself can fail (e.g. a missing #pet-container in a
+                // variant page): swallow it here too, otherwise the rejection escapes
+                // this catch and surfaces as an unhandled rejection with a blank pet
+                // and no hint about why.
+                try {
+                    currentAdapter = new NullAdapter({});
+                    await currentAdapter.load(document.getElementById('pet-container'));
+                } catch (fallbackError) {
+                    console.warn('[DesktopPet] Placeholder fallback also failed:', fallbackError);
+                }
             }
         }
 
@@ -556,7 +564,11 @@
             });
         })();
 
-        initModel();
+        initModel().catch((error) => {
+            // initModel() is async: a rejection here used to be an unhandled promise
+            // rejection (blank pet, nothing in the console explaining it).
+            console.warn('[DesktopPet] initModel failed:', error && error.message);
+        });
         console.log('[DesktopPet] Window loaded');
     </script>
 </body>

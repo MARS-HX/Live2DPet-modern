@@ -16,6 +16,7 @@
     let configCache = null;
     let socket = null;
     let ready = false;
+    let reconnectTimer = null;
 
     // ---- in-frame size / position ----------------------------------------
     // OBS can move and scale the source rectangle, but the pet's own placement
@@ -79,6 +80,11 @@
     }
 
     function connect() {
+        // One socket at a time. OBS recreates the browser source (and a reload re-runs
+        // this shim) while the previous socket is still closing; without these guards
+        // every close queued its own 2 s reconnect, so several sockets ended up sharing
+        // one page — all counted as live clients by the server and each re-broadcasting.
+        if (socket && (socket.readyState === 0 || socket.readyState === 1)) return;
         const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
         try {
             socket = new WebSocket(`${proto}//${location.host}/ws`);
@@ -111,7 +117,12 @@
         };
         socket.onclose = () => {
             ready = false;
-            setTimeout(connect, 2000);   // OBS reloads sources; reconnect quietly
+            // one pending reconnect at most: a second close must not queue a second one
+            if (reconnectTimer) return;
+            reconnectTimer = setTimeout(() => {
+                reconnectTimer = null;
+                connect();   // OBS reloads sources; reconnect quietly
+            }, 2000);
         };
         socket.onerror = () => { /* onclose handles it */ };
     }

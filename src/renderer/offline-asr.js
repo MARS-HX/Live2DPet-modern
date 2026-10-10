@@ -66,14 +66,26 @@ registerProcessor('l2d-capture', CaptureProcessor);
             this._pendingLen = 0;
             this._resultBound = null;
             this._active = false;
+            this._startPromise = null;   // in-flight start(), so concurrent calls share it
         }
 
         get active() { return this._active; }
 
-        /**
-         * @returns {Promise<{ok:boolean, reason?:string}>} never throws
-         */
-        async start() {
+        start() {
+            if (this._active) return Promise.resolve({ ok: true });
+            // `_active` is only set at the very END of the start sequence, so two
+            // quick calls (double-clicking 「测试离线语音」) both got past the check
+            // above and opened a SECOND microphone. The first capture then lost its
+            // only reference: stop() could not reach its tracks, and both worklet
+            // ports kept feeding the recogniser at double rate — the transcript was
+            // necessarily wrong, and the microphone stayed live.
+            if (this._startPromise) return this._startPromise;
+            this._startPromise = this._startInternal().finally(() => { this._startPromise = null; });
+            return this._startPromise;
+        }
+
+        /** @returns {Promise<{ok:boolean, reason?:string}>} never throws */
+        async _startInternal() {
             if (this._active) return { ok: true };
             if (!this._api) return { ok: false, reason: 'no_bridge' };
             if (!root.navigator?.mediaDevices?.getUserMedia) {

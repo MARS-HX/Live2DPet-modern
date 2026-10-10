@@ -17,6 +17,25 @@ function t(key) {
         || key;
 }
 
+/**
+ * Escape a value that is about to be interpolated into HTML (attribute or text).
+ *
+ * Everything rendered through innerHTML here can come from outside this app: Live2D
+ * model JSON (expression / motion / parameter names) and image files picked off disk.
+ * A Windows filename cannot contain a double quote, but a macOS/Linux one can — and
+ * `${name}` inside value="..." then closes the attribute and injects markup. The
+ * settings window exposes the whole preload bridge (saveConfig / openExternal /
+ * dshRun), and the CSP allows inline handlers, so this is not cosmetic.
+ */
+function escapeHtml(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 function applyI18n() {
     document.querySelectorAll('[data-i18n]').forEach(el => {
         el.textContent = t(el.dataset.i18n);
@@ -369,7 +388,7 @@ function renderParamMapping() {
             <select class="param-select" data-key="${key}" style="flex:1;padding:4px;font-size:12px;border-radius:4px;">
                 <option value="">${t('status.unmapped')}</option>
                 ${sorted.map(id =>
-                    `<option value="${id}" ${id === mapped ? 'selected' : ''}>${id}${id === suggested ? ' ★' : ''}</option>`
+                    `<option value="${escapeHtml(id)}" ${id === mapped ? 'selected' : ''}>${escapeHtml(id)}${id === suggested ? ' ★' : ''}</option>`
                 ).join('')}
             </select>
         `;
@@ -446,13 +465,13 @@ function renderImageList(modelConfig) {
 
         const emotionDisplay = f.emotionName ? '' : 'display:none;';
         row.innerHTML = `
-            <img class="image-thumb" src="file:///${folderPath}/${encodeURIComponent(f.file)}" alt="${f.file}">
-            <span style="flex:1;min-width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${f.file}">${f.file}</span>
+            <img class="image-thumb" src="file:///${escapeHtml(folderPath)}/${encodeURIComponent(f.file)}" alt="${escapeHtml(f.file)}">
+            <span style="flex:1;min-width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(f.file)}">${escapeHtml(f.file)}</span>
             <div class="cats">
                 <label><input type="checkbox" class="cat-idle" ${f.idle ? 'checked' : ''}> ${t('img.idle')}</label>
                 <label><input type="checkbox" class="cat-talking" ${f.talking ? 'checked' : ''}> ${t('img.talking')}</label>
                 <label><input type="checkbox" class="cat-emotion" ${f.emotionName ? 'checked' : ''}> ${t('img.emotion')}</label>
-                <input type="text" class="emotion-name" value="${f.emotionName || ''}" placeholder="${t('img.emotionPh')}" style="${emotionDisplay}">
+                <input type="text" class="emotion-name" value="${escapeHtml(f.emotionName || '')}" placeholder="${t('img.emotionPh')}" style="${emotionDisplay}">
             </div>
         `;
 
@@ -602,10 +621,10 @@ function renderExpressionList(modelConfig) {
         const row = document.createElement('div');
         row.className = 'expr-item';
         row.innerHTML = `
-            <input type="checkbox" class="expr-enabled" data-name="${expr.name}" checked>
-            <input type="text" class="expr-name" value="${expr.name}" style="width:80px;padding:2px 4px;font-size:12px;" data-index="${i}">
-            <span style="color:#888;font-size:11px;">${expr.file || ''}</span>
-            <input type="number" class="expr-dur" value="${durSec}" placeholder="${t('status.default')}" step="0.5" min="0" style="width:60px;padding:2px 4px;font-size:12px;" data-name="${expr.name}">
+            <input type="checkbox" class="expr-enabled" data-name="${escapeHtml(expr.name)}" checked>
+            <input type="text" class="expr-name" value="${escapeHtml(expr.name)}" style="width:80px;padding:2px 4px;font-size:12px;" data-index="${i}">
+            <span style="color:#888;font-size:11px;">${escapeHtml(expr.file || '')}</span>
+            <input type="number" class="expr-dur" value="${durSec}" placeholder="${t('status.default')}" step="0.5" min="0" style="width:60px;padding:2px 4px;font-size:12px;" data-name="${escapeHtml(expr.name)}">
             <span style="color:#888;font-size:11px;">${t('sec')}</span>
             <button class="btn btn-danger btn-sm expr-del" data-index="${i}" style="padding:2px 8px;">✕</button>
         `;
@@ -652,14 +671,14 @@ function renderMotionList(modelConfig) {
         const row = document.createElement('div');
         row.className = 'expr-item';
         row.innerHTML = `
-            <input type="checkbox" class="motion-enabled" data-name="${m.name}" checked>
-            <input type="text" class="motion-name" value="${m.name}" style="width:80px;padding:2px 4px;font-size:12px;" data-index="${i}">
+            <input type="checkbox" class="motion-enabled" data-name="${escapeHtml(m.name)}" checked>
+            <input type="text" class="motion-name" value="${escapeHtml(m.name)}" style="width:80px;padding:2px 4px;font-size:12px;" data-index="${i}">
             <select class="motion-group" data-index="${i}" style="width:80px;padding:2px 4px;font-size:12px;">
-                ${groupOptions.map(g => `<option value="${g}" ${g === m.group ? 'selected' : ''}>${g}</option>`).join('')}
-                ${!groupOptions.includes(m.group) ? `<option value="${m.group}" selected>${m.group}</option>` : ''}
+                ${groupOptions.map(g => `<option value="${escapeHtml(g)}" ${g === m.group ? 'selected' : ''}>${escapeHtml(g)}</option>`).join('')}
+                ${!groupOptions.includes(m.group) ? `<option value="${escapeHtml(m.group)}" selected>${escapeHtml(m.group)}</option>` : ''}
             </select>
             <input type="number" class="motion-index" value="${m.index}" min="0" max="${maxIdx}" style="width:45px;padding:2px 4px;font-size:12px;" data-index="${i}">
-            <input type="number" class="motion-dur" value="${durSec}" placeholder="${t('status.default')}" step="0.5" min="0" style="width:60px;padding:2px 4px;font-size:12px;" data-name="${m.name}">
+            <input type="number" class="motion-dur" value="${durSec}" placeholder="${t('status.default')}" step="0.5" min="0" style="width:60px;padding:2px 4px;font-size:12px;" data-name="${escapeHtml(m.name)}">
             <span style="color:#888;font-size:11px;">${t('sec')}</span>
             <button class="btn btn-danger btn-sm motion-del" data-index="${i}" style="padding:2px 8px;">✕</button>
         `;
@@ -1112,8 +1131,14 @@ document.getElementById('btn-test-tts').addEventListener('click', async () => {
         showStatus('tts-test-status', t('tts.synthSuccess'), 'success');
         const wavBytes = Uint8Array.from(atob(result.wav), c => c.charCodeAt(0));
         const blob = new Blob([wavBytes], { type: 'audio/wav' });
-        const audio = new Audio(URL.createObjectURL(blob));
-        audio.play();
+        const blobUrl = URL.createObjectURL(blob);
+        const audio = new Audio(blobUrl);
+        // Release the blob URL on the way out. Without this every 「测试合成」 click
+        // kept a blob URL (and its decoded audio) alive for the life of the window.
+        const release = () => { try { URL.revokeObjectURL(blobUrl); } catch (e) { /* ignore */ } };
+        audio.addEventListener('ended', release);
+        audio.addEventListener('error', release);
+        audio.play().catch(release);
     } else {
         showStatus('tts-test-status', t('tts.synthFailed') + result.error, 'error');
     }
