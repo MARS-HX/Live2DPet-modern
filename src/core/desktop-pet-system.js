@@ -9,6 +9,7 @@ class DesktopPetSystem {
         this.promptBuilder = null;
         this.systemPrompt = null;
         this.detectionInterval = null;
+        this._startupTickTimer = null;   // the "kick once, 3s after start" timer
         this.detectionIntervalMs = 10000;
         this.lastAppName = null;
         this.isRequesting = false;
@@ -19,6 +20,7 @@ class DesktopPetSystem {
         this.currentAudio = null;
         this.currentAudioUrl = null;
         this.currentSession = null;
+        this._audioResolve = null;       // settles the in-flight playback promise
 
         // Screenshot: captured on-demand in sendRequest (VLM captures independently)
         this.screenshotTimer = null; // kept for API compat, unused
@@ -227,7 +229,11 @@ class DesktopPetSystem {
     startDetection() {
         this.stopDetection();
         this.detectionInterval = setInterval(() => this.tick(), this.detectionIntervalMs);
-        setTimeout(() => this.tick(), 3000);
+        // Keep the handle: this timer used to be unreachable, so stopDetection()
+        // could never cancel it and every interval change left one more behind —
+        // one of which would fire a real screenshot + AI request while the pet
+        // window was already closing.
+        this._startupTickTimer = setTimeout(() => this.tick(), 3000);
         console.log(`[DesktopPetSystem] Detection started, interval: ${this.detectionIntervalMs}ms`);
     }
 
@@ -236,10 +242,19 @@ class DesktopPetSystem {
             clearInterval(this.detectionInterval);
             this.detectionInterval = null;
         }
+        if (this._startupTickTimer) {
+            clearTimeout(this._startupTickTimer);
+            this._startupTickTimer = null;
+        }
     }
 
     setInterval(ms) {
-        this.detectionIntervalMs = Math.max(10000, ms);
+        // Math.max(10000, NaN) is NaN, and setInterval(fn, NaN) fires roughly every
+        // 4ms. Clearing the "检测间隔" number input in settings makes parseInt('')
+        // NaN, which turned the detection loop into a hot loop hammering
+        // getActiveWindow several hundred times a second.
+        const seconds = Number(ms);
+        this.detectionIntervalMs = Number.isFinite(seconds) ? Math.max(10000, seconds) : 10000;
         if (this.isActive) this.startDetection();
     }
 
@@ -337,6 +352,12 @@ class DesktopPetSystem {
     /** Ask the pet's model for a short in-game remark and queue it. */
     async _companionMoment(win) {
         if (this.isRequesting || !this.aiClient?.isConfigured?.()) return;
+        // Hold the same lock the other two AI paths hold (see
+        // _handleCompanionUtterance). Without it the 10s detection tick walked
+        // straight past this call while it was still awaiting the model — giving
+        // two concurrent requests, two recentPool entries, and the earlier reply
+        // silently overwritten in pendingMessage.
+        this.isRequesting = true;
         const instruction = this.gameCompanion.buildGamePrompt(win);
         try {
             const content = [{ type: 'text', text: instruction }];
@@ -356,6 +377,8 @@ class DesktopPetSystem {
             this._processQueue();
         } catch (e) {
             console.log('[DEBUG:companion] failed:', e.message);
+        } finally {
+            this.isRequesting = false;
         }
     }
 
@@ -391,8 +414,12 @@ class DesktopPetSystem {
                 onError: (reason) => {
                     console.log(`[CompanionVoice] offline engine unavailable: ${reason}`);
                     this._companionVoiceFailedReason = reason;
-                    // Assets simply not installed yet: don't retry in a hot loop.
-                    if (reason === 'native_not_installed' || reason === 'model_not_installed') {
+                    // Anything that will fail the same way next second has to switch
+                    // voice input off: _syncCompanionVoice() runs from the 1s focus
+                    // tick, so an unlisted reason meant a 1 Hz restart storm — a fresh
+                    // asrStart IPC (new native recogniser) plus getUserMedia every
+                    // second, forever. A denied microphone is the easy way in.
+                    if (DesktopPetSystem.PERMANENT_VOICE_FAILURES.has(reason)) {
                         this.companionVoiceInput = false;
                     }
                     this._companionVoiceActive = false;
@@ -448,8 +475,13 @@ class DesktopPetSystem {
                         ? ' — Chromium 的语音识别依赖 Google 在线服务，Electron 不带该密钥，'
                           + '所以免手语音输入在本应用内无法工作'
                         : ''));
-                if (reason === 'not-allowed' || reason === 'service-not-allowed' || reason === 'network') {
-                    // Stop retrying: no amount of restarts will fix a missing service.
+                if (reason === 'not-allowed' || reason === 'service-not-allowed'
+                    || reason === 'network' || reason === 'audio-capture') {
+                    // Stop retrying: no amount of restarts will fix a missing service
+                    // or a missing microphone. `audio-capture` was the gap — it left
+                    // _companionVoiceActive true, and rec.onend restarted the
+                    // recogniser unconditionally, so no-microphone machines spun in
+                    // an unbounded start/fail loop.
                     this.companionVoiceInput = false;
                     this._companionVoiceActive = false;
                     this._companionRecognition = null;
@@ -753,6 +785,12 @@ class DesktopPetSystem {
     }
 
     stopCurrentAudio() {
+        // Settle any in-flight playback promise first (see _playPreparedAudio).
+        // pause() never fires 'ended', so without this the promise stayed pending
+        // for good and parked the _processQueue() coroutine with it — one leaked
+        // loop plus one Audio element per interruption.
+        const finish = this._audioResolve;
+        this._audioResolve = null;
         if (this.currentAudio) {
             this.currentAudio.pause();
             this.currentAudio = null;
@@ -761,6 +799,7 @@ class DesktopPetSystem {
             URL.revokeObjectURL(this.currentAudioUrl);
             this.currentAudioUrl = null;
         }
+        if (finish) finish();
     }
 
     /**
@@ -825,9 +864,22 @@ class DesktopPetSystem {
         this.currentAudio = audio;
         this.currentAudioUrl = audio._objectUrl || null;
         return new Promise(resolve => {
-            audio.addEventListener('ended', () => { this.stopCurrentAudio(); resolve(); });
-            audio.addEventListener('error', () => { this.stopCurrentAudio(); resolve(); });
-            audio.play().catch(() => { this.stopCurrentAudio(); resolve(); });
+            let settled = false;
+            const finish = () => {
+                if (settled) return;
+                settled = true;
+                if (this._audioResolve === finish) this._audioResolve = null;
+                // Only tear down the element this promise owns: a newer playback
+                // may already own currentAudio.
+                if (this.currentAudio === audio) this.stopCurrentAudio();
+                resolve();
+            };
+            // stopCurrentAudio() settles this through _audioResolve, because
+            // pausing an element never fires 'ended'.
+            this._audioResolve = finish;
+            audio.addEventListener('ended', finish);
+            audio.addEventListener('error', finish);
+            audio.play().catch(finish);
         });
     }
 
@@ -1335,5 +1387,22 @@ ${enhanced}
         }
     }
 }
+
+/**
+ * Voice-input failures that a restart cannot fix.
+ *
+ * `_syncCompanionVoice()` is driven by the 1s focus tick, so anything missing
+ * from this set gets retried once per second forever — each attempt rebuilding
+ * the native recogniser over IPC and calling getUserMedia again.
+ */
+DesktopPetSystem.PERMANENT_VOICE_FAILURES = new Set([
+    'native_not_installed',
+    'model_not_installed',
+    'microphone_denied',
+    'no_getusermedia',
+    'no_audioworklet',
+    'no_bridge',
+    'engine_unavailable',
+]);
 
 window.DesktopPetSystem = DesktopPetSystem;

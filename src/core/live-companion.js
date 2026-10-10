@@ -86,7 +86,11 @@
             if (!t) return true;
             if (t.length < this.minLength || t.length > this.maxLength) return true;
             if (t.startsWith('/')) return true;                     // bot-style command
-            if (t.startsWith('@')) return true;                     // addressed to someone else
+            // "@xxx" is usually addressed to someone else — but "@<pet name>" is
+            // exactly how viewers call the pet, and `mentions` is documented as
+            // "names that always get a reply". Rejecting every @ made the mention
+            // mode unreachable through the most common way of mentioning someone.
+            if (t.startsWith('@') && !this.mentionsPet(t)) return true;
             for (const re of BUILTIN_SPAM) if (re.test(t)) return true;
             const lower = t.toLowerCase();
             for (const word of this.ignoreList) {

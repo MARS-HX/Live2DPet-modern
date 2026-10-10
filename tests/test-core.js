@@ -341,6 +341,112 @@ describe('DesktopPetSystem', () => {
         assert.strictEqual(sys.currentAudio, null);
         assert.strictEqual(sys.currentAudioUrl, null);
     });
+
+    it('setInterval never produces NaN（回归：NaN 会变成 ~4ms 热循环）', () => {
+        // 设置界面把「检测间隔」输入框清空后 save，parseInt('') 是 NaN，
+        // 而 Math.max(10000, NaN) 还是 NaN，setInterval(fn, NaN) 约 4ms 一次。
+        const sys = new DesktopPetSystem();
+        for (const bad of [NaN, undefined, null, 'abc', '', Infinity]) {
+            sys.detectionIntervalMs = 12345;
+            sys.setInterval(bad);
+            assert.strictEqual(sys.detectionIntervalMs, 10000, `输入 ${String(bad)} 应回落到 10s`);
+        }
+    });
+
+    it('startDetection 的 3 秒定时器是可取消的（回归：句柄被丢弃）', async () => {
+        const sys = new DesktopPetSystem();
+        const cleared = [];
+        const orig = {
+            setInterval: global.setInterval, clearInterval: global.clearInterval,
+            setTimeout: global.setTimeout, clearTimeout: global.clearTimeout,
+        };
+        global.setInterval = () => ({ kind: 'interval' });
+        global.setTimeout = () => ({ kind: 'timeout' });
+        global.clearInterval = (h) => cleared.push(h && h.kind);
+        global.clearTimeout = (h) => cleared.push(h && h.kind);
+        try {
+            sys.startDetection();
+            assert.ok(sys._startupTickTimer, '3 秒定时器的句柄必须留着');
+            sys.stopDetection();
+        } finally {
+            global.setInterval = orig.setInterval;
+            global.clearInterval = orig.clearInterval;
+            global.setTimeout = orig.setTimeout;
+            global.clearTimeout = orig.clearTimeout;
+        }
+        assert.deepStrictEqual(cleared.sort(), ['interval', 'timeout'], '两个定时器都要被清掉');
+        assert.strictEqual(sys.detectionInterval, null);
+        assert.strictEqual(sys._startupTickTimer, null);
+    });
+
+    it('播放中停止会让播放 Promise 结算（回归：_processQueue 协程被永久挂起）', async () => {
+        const sys = new DesktopPetSystem();
+        const handlers = {};
+        const audio = {
+            _objectUrl: null,
+            play: () => Promise.resolve(),
+            pause() { this.paused = true; },
+            addEventListener: (name, fn) => { handlers[name] = fn; },
+        };
+        let settled = false;
+        const playing = sys._playPreparedAudio(audio).then(() => { settled = true; });
+        assert.strictEqual(typeof handlers.ended, 'function', '应挂上 ended 处理');
+        sys.stopCurrentAudio();   // 用户按了停止 / 来了新消息
+        // race 兜住「永不结算」：回归时应当判定失败，而不是把测试挂死
+        await Promise.race([playing, new Promise((r) => setTimeout(r, 1000))]);
+        assert.strictEqual(settled, true, 'pause() 不触发 ended，必须由 stopCurrentAudio 结算');
+        assert.strictEqual(audio.paused, true);
+    });
+
+    it('上一段迟到的 ended 不会打断新一段播放', async () => {
+        const sys = new DesktopPetSystem();
+        const make2 = () => {
+            const handlers = {};
+            return {
+                handlers,
+                audio: {
+                    _objectUrl: null, play: () => Promise.resolve(), pause() {},
+                    addEventListener: (name, fn) => { handlers[name] = fn; },
+                },
+            };
+        };
+        const a = make2();
+        const b = make2();
+        const playingA = sys._playPreparedAudio(a.audio);
+        const playingB = sys._playPreparedAudio(b.audio);   // 内部会先结算 A
+        await Promise.race([playingA, new Promise((r) => setTimeout(r, 1000))]);
+        assert.strictEqual(sys.currentAudio, b.audio, 'B 应该正在播放');
+
+        a.handlers.ended();     // A 的迟到事件
+        assert.strictEqual(sys.currentAudio, b.audio, 'A 的迟到 ended 不该把 B 停掉');
+
+        b.handlers.ended();
+        await Promise.race([playingB, new Promise((r) => setTimeout(r, 1000))]);
+        assert.strictEqual(sys.currentAudio, null);
+    });
+
+    it('_companionMoment 持锁：并发检测 tick 不会打出两个模型请求', async () => {
+        const sys = new DesktopPetSystem();
+        sys.isActive = true;
+        sys.systemPrompt = 'system';
+        sys.buildDynamicContext = () => '';
+        sys._companionScreenshot = async () => null;
+        sys._processQueue = () => {};
+        sys.gameCompanion = { buildGamePrompt: () => 'prompt', useScreenshots: false };
+        let calls = 0;
+        sys.aiClient = {
+            isConfigured: () => true,
+            callAPI: async () => { calls += 1; await new Promise((r) => setTimeout(r, 20)); return 'reply'; },
+        };
+
+        const first = sys._companionMoment({ title: 't', process: 'p' });
+        assert.strictEqual(sys.isRequesting, true, '第一次调用应立刻持锁');
+        await sys._companionMoment({ title: 't', process: 'p' });   // 应被锁挡下
+        await first;
+
+        assert.strictEqual(calls, 1, '不应该并发两个请求（先到的回复会被 pendingMessage 覆盖）');
+        assert.strictEqual(sys.isRequesting, false, '结束后必须释放锁');
+    });
 });
 
 // ========== Test: EmotionSystem ==========

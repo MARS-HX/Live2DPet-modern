@@ -50,6 +50,15 @@ describe('LiveCompanion.isNoise', () => {
         assert.strictEqual(c.isNoise('@某人 你好'), true);
     });
 
+    it('does NOT treat @<宠物名> as noise —— 那正是被点名的最常见写法', () => {
+        // 旧实现把所有 @ 开头一律判噪声，于是 mode='mention' 永远不生效：
+        // "@猫猫 在吗" 在 isNoise 就被拦掉，根本走不到 mentionsPet。
+        const c = make({ mentions: ['猫猫'] });
+        assert.strictEqual(c.isNoise('@猫猫 在吗'), false);
+        // 别人还是噪声
+        assert.strictEqual(c.isNoise('@路人 你好'), true);
+    });
+
     it('rejects text outside the length window', () => {
         const c = make({ minLength: 2, maxLength: 20 });
         assert.strictEqual(c.isNoise('好'), true);
@@ -107,6 +116,13 @@ describe('LiveCompanion.shouldReply', () => {
     it('never replies in mode none', () => {
         const c = make({ mode: 'none' });
         assert.strictEqual(c.shouldReply({ text: '主播怎么打' }, 100000), false);
+    });
+
+    it('mode=mention 会回应 @<宠物名>（回归：这条路径此前不可达）', () => {
+        const c = make({ mode: 'mention', mentions: ['猫猫'], replyIntervalMs: 3000 });
+        assert.strictEqual(c.shouldReply({ text: '@猫猫 在吗', uid: 1 }, 100000), true);
+        // 点名叫别人 -> 不回应（全局间隔已过，排除节流干扰）
+        assert.strictEqual(c.shouldReply({ text: '@路人 你好呀', uid: 2 }, 200000), false);
     });
 
     it('rate limits globally', () => {
