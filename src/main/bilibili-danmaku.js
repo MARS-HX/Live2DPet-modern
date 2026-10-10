@@ -242,6 +242,11 @@ class BilibiliDanmakuClient {
         this._reconnectTimer = null;
         this._reconnectDelay = RECONNECT_BASE_MS;
         this._stopping = false;
+        // Bumped by stop() and by every new start(). A connect attempt that is
+        // still awaiting a network round-trip compares against this afterwards:
+        // if it no longer matches, that attempt has been superseded and must not
+        // open a socket.
+        this._generation = 0;
         this._roomId = null;
         this._realRoomId = null;
         this._cookie = '';
@@ -437,9 +442,16 @@ class BilibiliDanmakuClient {
 
         this.stop();
         this._stopping = false;
+        // Stamp this attempt. stop() (and any later start()) bumps the counter, so
+        // an attempt still awaiting resolveRoom()/getDanmuInfo knows it lost.
+        const gen = this._generation;
         this._reconnectDelay = RECONNECT_BASE_MS;
         try {
             const room = await this.resolveRoom(roomInput);
+            if (gen !== this._generation || this._stopping) {
+                this._logger.log?.('[Bili] start superseded before connect; aborting');
+                return { success: true, cancelled: true };
+            }
             this._roomId = room.inputId;
             this._realRoomId = room.realRoomId;
             this._room = room;
@@ -455,7 +467,7 @@ class BilibiliDanmakuClient {
                 return { success: true, room, waitingForLive: true };
             }
 
-            await this._connectOnce();
+            await this._connectOnce(gen);
             return { success: true, room };
         } catch (e) {
             this._lastError = e.message;
@@ -467,14 +479,16 @@ class BilibiliDanmakuClient {
     /** Re-check the watched room; connect once it is live. Returns true if so. */
     async _checkLiveAndConnect() {
         if (this._stopping || this._roomId == null) return false;
+        const gen = this._generation;
         try {
             const room = await this.resolveRoom(this._roomId);
+            if (gen !== this._generation || this._stopping) return false;
             this._room = room;
             this._emitStatus({ room });
             if (room.liveStatus === 1) {
                 this._lastError = null;
                 this._logger.log?.(`[Bili] room ${room.realRoomId} went live; connecting`);
-                await this._connectOnce();
+                await this._connectOnce(gen);
                 return true;
             }
             return false;
@@ -496,7 +510,7 @@ class BilibiliDanmakuClient {
         if (this._liveTimer.unref) this._liveTimer.unref();
     }
 
-    async _connectOnce() {
+    async _connectOnce(gen = this._generation) {
         const real = this._realRoomId;
         // Every few attempts, throw away the cached token/host list and fetch a
         // fresh one (blivedm re-inits the room on the same schedule) — tokens do
@@ -507,6 +521,16 @@ class BilibiliDanmakuClient {
             this._token = null;
         }
         const { token, host, port } = await this._fetchDanmuInfo(real);
+
+        // stop() — or a newer start() — may have run during that fetch. Opening the
+        // socket here would hand the user a live connection they already cancelled:
+        // stop() had nothing to close yet, and the frame handler did not check
+        // _stopping, so danmaku kept arriving after the UI said "stopped".
+        if (gen !== this._generation || this._stopping) {
+            this._logger.log?.('[Bili] connect attempt superseded; not opening the socket');
+            return;
+        }
+
         const url = `wss://${host}:${port}/sub`;
         this._logger.log?.(`[Bili] connecting ${url} (room ${real})`);
 
@@ -514,8 +538,12 @@ class BilibiliDanmakuClient {
             headers: { 'User-Agent': this._ua, Origin: 'https://live.bilibili.com' },
         });
         this._ws = ws;
+        // A socket that has been replaced or stopped must stay silent: without
+        // this, two overlapping start() calls both fed the same danmaku through.
+        const isCurrent = () => this._ws === ws;
 
         ws.on('open', () => {
+            if (!isCurrent()) return;
             // Field set mirrors blivedm's web client: uid, roomid, protover,
             // platform, type, buvid (+ key when we have a token).
             const auth = {
@@ -530,14 +558,19 @@ class BilibiliDanmakuClient {
             try { ws.send(encodePacket(OP_AUTH, JSON.stringify(auth))); } catch (e) { this._logger.warn?.(`[Bili] auth send failed: ${e.message}`); }
         });
 
-        ws.on('message', (data) => this._handleFrame(data));
+        ws.on('message', (data) => {
+            if (!isCurrent()) return;
+            this._handleFrame(data);
+        });
 
         ws.on('error', (e) => {
+            if (!isCurrent()) return;
             this._lastError = e.message;
             this._logger.warn?.(`[Bili] ws error: ${e.message}`);
         });
 
         ws.on('close', () => {
+            if (!isCurrent()) return;
             this._connected = false;
             this._clearHeartbeat();
             this._emitStatus();
@@ -610,7 +643,8 @@ class BilibiliDanmakuClient {
         this._reconnectTimer = setTimeout(async () => {
             this._reconnectTimer = null;
             if (this._stopping || this._roomId == null) return;
-            try { await this._connectOnce(); } catch (e) {
+            const gen = this._generation;
+            try { await this._connectOnce(gen); } catch (e) {
                 this._lastError = e.message;
                 this._emitStatus();
                 this._scheduleReconnect();
@@ -621,6 +655,9 @@ class BilibiliDanmakuClient {
 
     stop() {
         this._stopping = true;
+        // Supersede any connect attempt that is mid-flight: it checks this before
+        // opening a socket, and its socket handlers check ownership before acting.
+        this._generation += 1;
         this._clearHeartbeat();
         if (this._reconnectTimer) { clearTimeout(this._reconnectTimer); this._reconnectTimer = null; }
         if (this._liveTimer) { clearTimeout(this._liveTimer); this._liveTimer = null; }

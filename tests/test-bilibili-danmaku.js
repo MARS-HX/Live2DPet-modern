@@ -694,3 +694,105 @@ describe('optional login (SESSDATA), blivedm-style', () => {
         client.stop();
     });
 });
+
+// ========== 连接生命周期：停止 / 重复 start ==========
+
+const DANMU_JSON = JSON.stringify({
+    cmd: 'DANMU_MSG:4:0:2:2:2:0',
+    info: [
+        [0, 1, 25, 16777215, 1700000000, 0, 0, '', 0, 0, 0, '', 0, 0, 0, 0],
+        '你好呀',
+        [12345678, '测试用户', 0, 0, 0, 10000, 1, ''],
+    ],
+});
+
+/** 记录建立过哪些 socket，并可让 getDanmuInfo 卡住以便插入 stop()。 */
+function makeLifecycleHarness(gate) {
+    const sockets = [];
+    const client = new BilibiliDanmakuClient({
+        httpGetJson: async (url) => {
+            if (url.includes('/getDanmuInfo')) {
+                if (gate) await gate;
+                return { code: 0, data: { token: 'TOKEN', host_list: [{ host: 'bd-test.chat.bilibili.com', wss_port: 443 }] } };
+            }
+            return makeGetJson()(url);
+        },
+        wsFactory: () => { const w = new FakeWs(); sockets.push(w); return w; },
+        logger: { log() {}, warn() {}, error() {} },
+    });
+    return { client, sockets };
+}
+
+describe('BilibiliDanmakuClient connection lifecycle', () => {
+    it('stop() 在连接途中落地 → 绝不再打开 socket（回归：停止后弹幕仍在推）', async () => {
+        let release;
+        const gate = new Promise((r) => { release = r; });
+        const { client, sockets } = makeLifecycleHarness(gate);
+
+        const starting = client.start(5440);       // 会卡在 getDanmuInfo
+        await new Promise((r) => setTimeout(r, 5)); // 让它走到那个 await
+        client.stop();
+        release();
+        const res = await starting;
+
+        assert.strictEqual(sockets.length, 0, '停止之后不能再建立连接');
+        assert.strictEqual(client.status().connected, false);
+        assert.ok(!res.error, '用户主动停止不该被报成错误');
+    });
+
+    it('停止之后到达的帧不会被派发（回归：僵尸连接仍在推弹幕）', async () => {
+        const { client, sockets } = makeLifecycleHarness();
+        await client.start(5440);
+        const ws = sockets[0];
+        const seen = [];
+        client.on('message', (m) => seen.push(m));
+
+        client.stop();
+        // 旧实现里 stop() 只关闭"当时存在"的 socket，而这条 socket 的 message
+        // 监听仍在，也没有任何 _stopping 检查，于是停止后弹幕照样被处理。
+        ws.emit('message', encodePacket(OP_MESSAGE, DANMU_JSON));
+        assert.deepStrictEqual(seen, [], '停止后不应再派发任何弹幕');
+        assert.strictEqual(client._received, 0);
+    });
+
+    it('并发的两次 start() 只建立一条连接（回归：漏一条 + 同一条弹幕处理两遍）', async () => {
+        const { client, sockets } = makeLifecycleHarness();
+        await Promise.all([client.start(5440), client.start(5440)]);
+
+        assert.strictEqual(sockets.length, 1, '只应有一条 socket');
+        // 留下的那条必须是真的可用，而不是被丢弃的半成品
+        const ws = sockets[0];
+        ws.emit('open');
+        ws.emit('message', encodePacket(OP_AUTH_REPLY, JSON.stringify({ code: 0 })));
+        assert.strictEqual(client.status().connected, true);
+
+        const seen = [];
+        client.on('message', (m) => seen.push(m));
+        ws.emit('message', encodePacket(OP_MESSAGE, DANMU_JSON));
+        assert.strictEqual(seen.length, 1, '这条连接应当正常工作');
+        assert.strictEqual(client._received, 1);
+
+        client.stop();
+        assert.strictEqual(ws.readyState, 3, '停止应关闭这条 socket');
+    });
+
+    it('被替换掉的旧 socket 不再处理弹幕，也不会触发重连', async () => {
+        const { client, sockets } = makeLifecycleHarness();
+        await client.start(5440);
+        const stale = sockets[0];
+        await client.start(5440);        // 第二次 start 会关掉第一条并新建一条
+        assert.strictEqual(sockets.length, 2);
+
+        const seen = [];
+        client.on('message', (m) => seen.push(m));
+        stale.emit('message', encodePacket(OP_MESSAGE, DANMU_JSON));
+        assert.deepStrictEqual(seen, [], '旧 socket 的帧必须被忽略');
+
+        // 旧 socket 的 close 也不该把新连接的定时器/状态搅乱
+        const before = client.status().connected;
+        stale.emit('close');
+        assert.strictEqual(client.status().connected, before);
+        assert.strictEqual(client._reconnectTimer, null, '旧 socket 不该安排重连');
+        client.stop();
+    });
+});
