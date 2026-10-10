@@ -84,4 +84,27 @@ describe('preload IPC channels', () => {
         }
         assert.ok(seen.size > 20, 'should have found many handlers');
     });
+
+    it('event subscriptions the renderer makes are actually sent by the main process', () => {
+        // The direction this file did not cover: preload exposes `onX(cb)`, but nothing
+        // in the main process ever sends that channel. Such a leftover never errors — it
+        // just makes callers believe an event will arrive. It is the same family as the
+        // STT remnant that produced "No handler registered" (see the header), and this
+        // check is exactly how `voicevox-setup-progress` and `show-chat-message` were
+        // found: two bridges left behind with no sender and no subscriber.
+        //
+        // Caveat: bilibili-ipc / dsh-ipc hold forwarders of the shape
+        // `win.webContents.send(channel, …)`. Their *call sites* pass literals, which the
+        // two patterns below pick up. If a genuinely dynamic channel ever appears, this
+        // assertion has to be relaxed.
+        const subscribed = [...preload.matchAll(/onIpc\(\s*['"`]([^'"`]+)['"`]/g)].map((m) => m[1]);
+        const sent = new Set();
+        for (const m of mainSource.matchAll(/[.]send\(\s*['"`]([^'"`]+)['"`]/g)) sent.add(m[1]);
+        for (const m of mainSource.matchAll(/broadcast\(\s*['"`]([^'"`]+)['"`]/g)) sent.add(m[1]);
+
+        assert.ok(subscribed.length >= 15, `should find many subscriptions, found ${subscribed.length}`);
+        const missing = subscribed.filter((c) => !sent.has(c)).sort();
+        assert.deepStrictEqual(missing, [],
+            `the renderer subscribes to these, but the main process never sends them:\n  ${missing.join('\n  ')}`);
+    });
 });

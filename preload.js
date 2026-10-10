@@ -1,5 +1,19 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+/**
+ * Register an IPC listener and return an unsubscribe function.
+ *
+ * `ipcRenderer.on` has no detach of its own, and the renderer's hot-reload paths
+ * re-register the same listeners (a model-config save reloads the adapter), so the
+ * old ones piled up and each kept driving an element that was already gone.
+ * Handing back the unsubscribe makes dropping them possible; ignoring the return
+ * value stays exactly as harmless as it was before.
+ */
+function onIpc(channel, handler) {
+    ipcRenderer.on(channel, handler);
+    return () => ipcRenderer.removeListener(channel, handler);
+}
+
 contextBridge.exposeInMainWorld('electronAPI', {
     // Pet window
     createPetWindow: (data) => ipcRenderer.invoke('create-pet-window', data),
@@ -12,7 +26,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     setWindowPosition: (x, y, w, h) => ipcRenderer.invoke('set-window-position', x, y, w, h),
     getWindowBounds: () => ipcRenderer.invoke('get-window-bounds'),
     setCanvasY: (val) => ipcRenderer.invoke('set-canvas-y', val),
-    onSetCanvasY: (callback) => ipcRenderer.on('set-canvas-y', (_, val) => callback(val)),
+    onSetCanvasY: (callback) => onIpc('set-canvas-y', (_, val) => callback(val)),
     getWindowPosition: () => ipcRenderer.invoke('get-window-position'),
 
     // Chat bubble
@@ -83,7 +97,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ttsGetAvailableVvms: () => ipcRenderer.invoke('tts-get-available-vvms'),
     downloadVvm: (filename) => ipcRenderer.invoke('download-vvm', filename),
     setupVoicevox: () => ipcRenderer.invoke('setup-voicevox'),
-    onVoicevoxSetupProgress: (cb) => ipcRenderer.on('voicevox-setup-progress', (e, msg) => cb(msg)),
+    // onVoicevoxSetupProgress 已删除：main 侧从不发送 voicevox-setup-progress，
+    // 渲染层也没有任何调用点 —— VOICEVOX 被 Mimo 取代后留下的空桥接。
 
     // Default audio (Phase 2)
     generateDefaultAudio: (phrases, styleId) => ipcRenderer.invoke('generate-default-audio', phrases, styleId),
@@ -96,8 +111,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     dshConfig: (patch) => ipcRenderer.invoke('dsh-config', patch),
     dshRun: (task) => ipcRenderer.invoke('dsh-run', task),
     dshCancel: () => ipcRenderer.invoke('dsh-cancel'),
-    onDshOutput: (cb) => ipcRenderer.on('dsh://output', (e, data) => cb(data)),
-    onDshDone: (cb) => ipcRenderer.on('dsh://done', (e, data) => cb(data)),
+    onDshOutput: (cb) => onIpc('dsh://output', (e, data) => cb(data)),
+    onDshDone: (cb) => onIpc('dsh://done', (e, data) => cb(data)),
 
     // ========== 哔哩哔哩直播间弹幕 ==========
     // 读取直播间弹幕，让桌宠对弹幕作出回应。
@@ -105,8 +120,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     biliStart: (roomId) => ipcRenderer.invoke('bili-start', roomId),
     biliStop: () => ipcRenderer.invoke('bili-stop'),
     biliConfig: (patch) => ipcRenderer.invoke('bili-config', patch),
-    onBiliDanmaku: (cb) => ipcRenderer.on('bili://danmaku', (e, data) => cb(data)),
-    onBiliStatus: (cb) => ipcRenderer.on('bili://status', (e, data) => cb(data)),
+    onBiliDanmaku: (cb) => onIpc('bili://danmaku', (e, data) => cb(data)),
+    onBiliStatus: (cb) => onIpc('bili://status', (e, data) => cb(data)),
 
     // ========== OBS 兼容模式 ==========
     // Chromium 绕过 Windows GDI，OBS 读窗口会得到纯黑；关掉 GPU 合成才能被抓到。
@@ -129,29 +144,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
     asrStart: () => ipcRenderer.invoke('asr-start'),
     asrStop: () => ipcRenderer.invoke('asr-stop'),
     asrFeed: (pcm) => ipcRenderer.send('asr-feed', pcm),
-    onAsrResult: (cb) => ipcRenderer.on('asr://result', (e, text) => cb(text)),
-    onAsrInstallProgress: (cb) => ipcRenderer.on('asr://install-progress', (e, info) => cb(info)),
+    onAsrResult: (cb) => onIpc('asr://result', (e, text) => cb(text)),
+    onAsrInstallProgress: (cb) => onIpc('asr://install-progress', (e, info) => cb(info)),
 
     // Event listeners (原有)
-    onCharacterUpdate: (cb) => ipcRenderer.on('character-update', (e, data) => cb(data)),
-    onPetWindowClosed: (cb) => ipcRenderer.on('pet-window-closed', () => cb()),
-    onChatBubbleMessage: (cb) => ipcRenderer.on('chat-bubble-message', (e, data) => cb(data)),
-    onShowChatMessage: (cb) => ipcRenderer.on('show-chat-message', (e, data) => cb(data)),
-    onSizeChanged: (cb) => ipcRenderer.on('size-changed', (e, size) => cb(size)),
-    onPlayExpression: (cb) => ipcRenderer.on('play-expression', (e, name) => cb(name)),
-    onRevertExpression: (cb) => ipcRenderer.on('revert-expression', () => cb()),
-    onPlayMotion: (cb) => ipcRenderer.on('play-motion', (e, group, index) => cb(group, index)),
-    onTalkingStateChanged: (cb) => {
-        // Returns an unsubscribe function. These are ipcRenderer.on registrations and
-        // a model-config save reloads the adapter, which re-registers them — with no way
-        // to detach, every reload left another live listener driving an orphaned element.
-        const handler = (e, isTalking) => cb(isTalking);
-        ipcRenderer.on('talking-state-changed', handler);
-        return () => ipcRenderer.removeListener('talking-state-changed', handler);
-    },
-    onPetHoverState: (cb) => ipcRenderer.on('pet-hover-state', (e, hovering) => cb(hovering)),
-    onPetHit: (cb) => ipcRenderer.on('pet-hit', (e, data) => cb(data)),
-    onModelConfigUpdate: (cb) => ipcRenderer.on('model-config-update', (e, config) => cb(config)),
+    onCharacterUpdate: (cb) => onIpc('character-update', (e, data) => cb(data)),
+    onPetWindowClosed: (cb) => onIpc('pet-window-closed', () => cb()),
+    onChatBubbleMessage: (cb) => onIpc('chat-bubble-message', (e, data) => cb(data)),
+    // onShowChatMessage 已删除：main 侧从不发送 show-chat-message，渲染层也没有调用点。
+    onSizeChanged: (cb) => onIpc('size-changed', (e, size) => cb(size)),
+    onPlayExpression: (cb) => onIpc('play-expression', (e, name) => cb(name)),
+    onRevertExpression: (cb) => onIpc('revert-expression', () => cb()),
+    onPlayMotion: (cb) => onIpc('play-motion', (e, group, index) => cb(group, index)),
+    onTalkingStateChanged: (cb) => onIpc('talking-state-changed', (e, isTalking) => cb(isTalking)),
+    onPetHoverState: (cb) => onIpc('pet-hover-state', (e, hovering) => cb(hovering)),
+    onPetHit: (cb) => onIpc('pet-hit', (e, data) => cb(data)),
+    onModelConfigUpdate: (cb) => onIpc('model-config-update', (e, config) => cb(config)),
 
     // External links
     openExternal: (url) => ipcRenderer.invoke('open-external', url),
