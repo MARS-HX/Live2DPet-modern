@@ -926,6 +926,51 @@ describe('VLMExtractor', () => {
             '等待模型期间抓到的新帧没被模型看过，不该被一起丢掉');
     });
 
+    it('flush 期间写入的条目不会丢（回归：await 之后才清 _dirty）', async () => {
+        const pool = new LongTermPool();
+        const saves = [];
+        let release;
+        const gate = new Promise((r) => { release = r; });
+        global.window.electronAPI = {
+            saveEnhanceData: async (payload) => { saves.push(payload); await gate; return { success: true }; },
+        };
+        try {
+            pool.setForTitle('A', 'memory', { lastSeen: '2026-01-01' });
+            const flushing = pool.flush();
+
+            // 落盘在途时又写了一条（真实路径：MemoryTracker.recordFocus → setForTitle）
+            pool.setForTitle('B', 'memory', { lastSeen: '2026-01-02' });
+            release();
+            await flushing;
+
+            assert.strictEqual(saves.length, 1);
+            assert.deepStrictEqual(Object.keys(saves[0]), ['A'], '第一次落盘只包含当时的内容');
+            assert.strictEqual(pool._dirty, true,
+                '在途期间的写入必须让 _dirty 保持为真，否则这条改动再也不会被落盘');
+
+            await pool.flush();
+            assert.strictEqual(saves.length, 2, '下一次 flush 应把新条目也存下去');
+            assert.deepStrictEqual(Object.keys(saves[1]).sort(), ['A', 'B']);
+            assert.strictEqual(pool._dirty, false);
+        } finally {
+            delete global.window.electronAPI;
+        }
+    });
+
+    it('flush 失败时保持 dirty，以便重试', async () => {
+        const pool = new LongTermPool();
+        global.window.electronAPI = {
+            saveEnhanceData: async () => { throw new Error('ipc down'); },
+        };
+        try {
+            pool.setForTitle('A', 'memory', { lastSeen: '2026-01-01' });
+            await pool.flush();
+            assert.strictEqual(pool._dirty, true, '没存成功就不能标记为已保存');
+        } finally {
+            delete global.window.electronAPI;
+        }
+    });
+
     it('resetInterval clears tracking', () => {
         const vlm = new VLMExtractor(new ShortTermPool(), new LongTermPool(), null);
         vlm._intervals['test'] = 30000;

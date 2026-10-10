@@ -78,6 +78,11 @@ class AsrSession {
 
 function registerAsrIPC(ctx, ipcMain, deps) {
     const { app, configManager, logger = console } = deps;
+    // Injectable so the install flow can be driven without a real download.
+    const readNativeStatus = deps.nativeStatus || nativeStatus;
+    const readModelStatus = deps.modelStatus || modelStatus;
+    const installNative = deps.installNativeLib || installNativeLib;
+    const installModel = deps.downloadAndInstall || downloadAndInstall;
     const userData = () => app.getPath('userData');
 
     let engine = null;              // loaded lazily, kept for the app lifetime
@@ -101,8 +106,8 @@ function registerAsrIPC(ctx, ipcMain, deps) {
     }
 
     function status() {
-        const native = nativeStatus(userData(), {});
-        const model = modelStatus(userData(), {});
+        const native = readNativeStatus(userData(), {});
+        const model = readModelStatus(userData(), {});
         return {
             platformSupported: process.platform === 'win32',
             nativeInstalled: native.installed,
@@ -132,7 +137,7 @@ function registerAsrIPC(ctx, ipcMain, deps) {
     /** Download whatever is missing, reporting progress to the renderer. */
     ipcMain.handle('asr-install', async () => {
         if (installing) return installing;
-        installing = (async () => {
+        const task = (async () => {
             const progress = (stage, frac, extra = {}) => {
                 for (const win of [ctx.settingsWindow, ctx.petWindow]) {
                     if (win && !win.isDestroyed()) {
@@ -141,19 +146,19 @@ function registerAsrIPC(ctx, ipcMain, deps) {
                 }
             };
             try {
-                const native = nativeStatus(userData(), {});
+                const native = readNativeStatus(userData(), {});
                 if (!native.installed) {
                     progress('native', 0);
-                    await installNativeLib(userData(), {
+                    await installNative(userData(), {
                         onProgress: (f) => progress('native', f),
                         logger,
                     });
                     progress('native', 1);
                 }
-                const model = modelStatus(userData(), {});
+                const model = readModelStatus(userData(), {});
                 if (!model.installed) {
                     progress('model', 0);
-                    await downloadAndInstall(userData(), {
+                    await installModel(userData(), {
                         onProgress: (f) => progress('model', f),
                         logger,
                     });
@@ -163,10 +168,15 @@ function registerAsrIPC(ctx, ipcMain, deps) {
             } catch (e) {
                 logger.warn?.(`[ASR] install failed: ${e.message}`);
                 return { success: false, error: e.message, ...status() };
-            } finally {
-                installing = null;
             }
         })();
+
+        // Clear through the *chained* promise. The body previously cleared
+        // `installing` in its own finally, which on the "nothing is missing" path
+        // (no await at all) ran before this assignment — leaving `installing` set
+        // to an already-resolved promise for the rest of the session, so every
+        // later asr-install returned that stale snapshot instead of re-checking.
+        installing = task.finally(() => { installing = null; });
         return installing;
     });
 

@@ -134,10 +134,17 @@ class LongTermPool {
         this.prune();
         try {
             if (window.electronAPI?.saveEnhanceData) {
-                await window.electronAPI.saveEnhanceData(this._titles);
+                // Snapshot first, then clear the flag BEFORE awaiting. The save is
+                // async, so anything written while it is in flight is not part of
+                // this payload — and the old order (await, then _dirty = false)
+                // threw that write away for good. Copy explicitly rather than
+                // relying on the transport to clone it for us.
+                const payload = JSON.parse(JSON.stringify(this._titles));
                 this._dirty = false;
+                await window.electronAPI.saveEnhanceData(payload);
             }
         } catch (e) {
+            this._dirty = true;   // 保存失败：别把未落盘的改动标成已保存
             console.warn('[Enhance:Pool] Failed to flush:', e.message);
         } finally {
             this._flushing = false;
