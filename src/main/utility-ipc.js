@@ -81,9 +81,21 @@ function registerUtilityIPC(ctx, ipcMain, deps) {
     });
 
     // Forward renderer console.log to main process stdout (no --enable-logging needed)
+    //
+    // `level` is attacker-influenced (any renderer can call rendererLog with any
+    // string), so it must be allow-listed. `console['__proto__']` resolves to
+    // Object.prototype — not a function — so the old `console[level] || console.log`
+    // fell through to it and `.apply()` threw inside an ipcMain.on listener, which
+    // surfaces as an uncaught exception in the main process.
+    const LOG_LEVELS = new Set(['log', 'info', 'warn', 'error', 'debug']);
     ipcMain.on('renderer-log', (_, level, args) => {
-        const fn = console[level] || console.log;
-        fn.apply(console, args);
+        const fn = LOG_LEVELS.has(level) ? console[level] : console.log;
+        const list = Array.isArray(args) ? args : [args];
+        try {
+            fn.apply(console, list);
+        } catch (e) {
+            // Forwarding a log line must never take down the main process.
+        }
     });
 
     // ---- Windows 本地语音识别（SAPI via PowerShell） ----
@@ -117,12 +129,19 @@ try {
             const os = require('os');
             const tmpFile = path.join(os.tmpdir(), 'live2dpet_stt_' + Date.now() + '.ps1');
             fs.writeFileSync(tmpFile, psScript, 'utf-8');
-            const result = require('child_process').execSync(
-                'powershell -ExecutionPolicy Bypass -File "' + tmpFile + '"',
-                { timeout: 8000, encoding: 'utf-8', maxBuffer: 1024 * 1024 }
-            );
-            try { fs.unlinkSync(tmpFile); } catch(e) {}
-            const text = result.trim().split('\\n').filter(l => l.trim() && l !== '__TIMEOUT__').join(' ');
+            let result;
+            try {
+                result = require('child_process').execSync(
+                    'powershell -ExecutionPolicy Bypass -File "' + tmpFile + '"',
+                    { timeout: 8000, encoding: 'utf-8', maxBuffer: 1024 * 1024 }
+                );
+            } finally {
+                // 超时/失败路径同样必须删：原先只在成功后才 unlink，
+                // 于是每次识别失败都在 %TEMP% 里留一个 .ps1。
+                try { fs.unlinkSync(tmpFile); } catch(e) {}
+            }
+            // 按真实换行切分：split('\\n') 切的是字面量反斜杠+n，永远切不开 PowerShell 的换行。
+            const text = result.split(/\r?\n/).map(l => l.trim()).filter(l => l && l !== '__TIMEOUT__').join(' ');
             if (text) return { success: true, text: text };
             return { success: false, error: 'no_speech' };
         } catch (error) {

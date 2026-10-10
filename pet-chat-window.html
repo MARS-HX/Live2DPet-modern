@@ -801,6 +801,19 @@ function buildTavernContext() {
     return '最近对话:\n' + recent;
 }
 
+/**
+ * 把一段不可信文本按「纯文本 + 换行转 <br>」渲染进容器。
+ * 模型输出 / 网络内容一律走这里，不要把它拼进 innerHTML。
+ */
+function appendPlainText(container, text) {
+    const lines = String(text == null ? '' : text).split(/\r\n|\r|\n/);
+    lines.forEach((line, index) => {
+        if (index > 0) container.appendChild(document.createElement('br'));
+        if (line) container.appendChild(document.createTextNode(line));
+    });
+    return container;
+}
+
 // 日记生成
 async function generateDiary() {
     if (chatMode !== 'tavern' || !diaryStore || diaryStore.history.length < 4) return;
@@ -809,7 +822,7 @@ async function generateDiary() {
         const userLabel = (currentPreset && currentPreset.userRole) || '冒险者';
 const aiLabel = (currentPreset && currentPreset.aiRole) || '酒馆老板';
 
-const recent = diaryStore.history.slice(-20).map(m => (m.role==='user'?userLabel:aiLabel)+': '+m.content).join('\\n');
+const recent = diaryStore.history.slice(-20).map(m => (m.role==='user'?userLabel:aiLabel)+': '+m.content).join('\n');
         const diaryPrompt = (currentPreset && currentPreset.diaryPrompt) 
             ? currentPreset.diaryPrompt 
             : '你是酒馆老板，写100字左右的冒险日记。';
@@ -827,11 +840,22 @@ const recent = diaryStore.history.slice(-20).map(m => (m.role==='user'?userLabel
             popup.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);z-index:999;display:flex;justify-content:center;align-items:center;';
             const box = document.createElement('div');
             box.style.cssText = 'background:white;border-radius:16px;padding:24px;max-width:400px;max-height:60vh;overflow-y:auto;font-size:13px;line-height:1.8;box-shadow:0 8px 32px rgba(0,0,0,0.2);';
-            box.innerHTML = '<h3 style="color:#e75480;margin-bottom:12px;text-align:center;">📜 冒险日记</h3><div style="max-height:40vh;overflow-y:auto;margin-bottom:12px;">' + diary.replace(/\\n/g, '<br>') + '</div><button style="display:block;margin:0 auto;padding:8px 32px;border:none;border-radius:20px;background:#e75480;color:white;cursor:pointer;font-size:14px;font-weight:bold;">已阅 ✓</button>';
+            // 日记是模型输出，一律当纯文本渲染。这里曾经是字符串拼 innerHTML：
+            // 一份被提示注入的模型回复就能在这个 webSecurity:false 的窗口里执行脚本，
+            // 而 preload 向渲染层暴露了 dshRun() —— 等于把本机交给了模型。
+            const diaryTitle = document.createElement('h3');
+            diaryTitle.style.cssText = 'color:#e75480;margin-bottom:12px;text-align:center;';
+            diaryTitle.textContent = '📜 冒险日记';
+            const diaryBody = document.createElement('div');
+            diaryBody.style.cssText = 'max-height:40vh;overflow-y:auto;margin-bottom:12px;';
+            appendPlainText(diaryBody, diary);
+            const diaryOk = document.createElement('button');
+            diaryOk.style.cssText = 'display:block;margin:0 auto;padding:8px 32px;border:none;border-radius:20px;background:#e75480;color:white;cursor:pointer;font-size:14px;font-weight:bold;';
+            diaryOk.textContent = '已阅 ✓';
+            box.append(diaryTitle, diaryBody, diaryOk);
             popup.appendChild(box);
             document.body.appendChild(popup);
-            // 用 querySelector 找按钮，避免 id 冲突
-            popup.querySelector('button').onclick = () => popup.remove();
+            diaryOk.onclick = () => popup.remove();
         }
     } catch(e) { console.warn('[Diary]', e.message); }
 }
