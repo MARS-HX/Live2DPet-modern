@@ -1647,13 +1647,23 @@ document.getElementById('btn-asr-test')?.addEventListener('click', async () => {
 
     // Drop anything still running from a previous click.
     const token = ++asrTestToken;
-    if (asrTestCapture) { const old = asrTestCapture; asrTestCapture = null; old.stop().catch(() => {}); }
+    if (asrTestCapture) {
+        const old = asrTestCapture;
+        asrTestCapture = null;
+        // Await the teardown: without it the previous microphone is still open (and its
+        // worklet port still feeding the engine) while the new capture starts.
+        await old.stop().catch(() => {});
+    }
 
     say(t('asr.testing'));
     let done = false;
+    let timeoutId = null;
     const finish = async (text, cls) => {
         if (done || token !== asrTestToken) return;
         done = true;
+        // Clear the fallback timer: it used to keep running (and hold this closure) for
+        // its full 15 s after every successful test.
+        if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
         const cap = asrTestCapture;
         asrTestCapture = null;
         try { if (cap) await cap.stop(); else await window.electronAPI.asrStop(); } catch { /* ignore */ }
@@ -1671,7 +1681,7 @@ document.getElementById('btn-asr-test')?.addEventListener('click', async () => {
 
     const res = await cap.start();
     if (!res.ok) { await finish(t('asr.error') + ' ' + res.reason, 'status error'); return; }
-    setTimeout(() => finish(t('asr.heardNothing'), 'status error'), 15000);
+    timeoutId = setTimeout(() => finish(t('asr.heardNothing'), 'status error'), 15000);
 });
 
 // Progress pushes from the main process while downloading.
