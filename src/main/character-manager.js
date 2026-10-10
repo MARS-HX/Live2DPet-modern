@@ -303,7 +303,10 @@ function registerCharacterHandlers(ctx, ipcMain, deps) {
         return { success: false, error: 'no default available' };
     });
 
-    initPrompts();
+    // initPrompts() is async and its first await-free step calls fs.mkdirSync.
+    // Without a catch, a failure there (locked userData, full disk) became an
+    // unhandled rejection in the main process on every startup.
+    initPrompts().catch((e) => console.error('[Prompts] init failed:', e.message));
     return { getCharacterPath, readCardInfo };
 }
 

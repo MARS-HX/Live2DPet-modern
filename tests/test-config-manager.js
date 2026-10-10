@@ -319,6 +319,35 @@ describe('createConfigManager (async)', () => {
         assert.strictEqual(cfg.obs.browserSource.enabled, true, '缺的字段要由默认值补上');
         assert.deepStrictEqual(cfg.obs.browserSource.transform, { scale: 1, x: 0, y: 0 });
     });
+
+    it('并发写盘不会互相覆盖（回归：读-改-写跨越多个 await，没有串行化）', async () => {
+        // 真实场景：拖 OBS 缩放滑杆触发 obs-transform-set 的同时，
+        // TTS 默认音频生成完成触发保存 —— 后写者基于同一份旧快照，前者的字段被丢弃。
+        const slowFiles = { [cfgPath(BASE)]: JSON.stringify({ interval: 10 }) };
+        const slowOpts = {
+            basePath: BASE,
+            readFile: async (p) => {
+                await new Promise((r) => setTimeout(r, 5));
+                if (!(p in slowFiles)) throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+                return slowFiles[p];
+            },
+            writeFile: async (p, d) => {
+                await new Promise((r) => setTimeout(r, 5));
+                slowFiles[p] = d;
+            },
+            exists: async (p) => p in slowFiles,
+        };
+        const cm2 = createConfigManager(mockApp, slowOpts);
+
+        await Promise.all([
+            cm2.saveConfigFile({ interval: 30 }),
+            cm2.saveConfigFile({ chatGap: 9 }),
+        ]);
+
+        const saved = JSON.parse(slowFiles[cfgPath(BASE)]);
+        assert.strictEqual(saved.interval, 30, '先发起的写盘不该被后发起的覆盖');
+        assert.strictEqual(saved.chatGap, 9, '两次并发写都必须落地');
+    });
 });
 
 describe('createI18nHelper', () => {

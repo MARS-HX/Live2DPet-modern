@@ -257,7 +257,7 @@ function createConfigManager(app, options = {}) {
         return getDefaultConfig();
     }
 
-    async function saveConfigFile(data) {
+    async function _saveConfigFile(data) {
         try {
             const existing = await loadConfigFile();
             const merged = { ...existing, ...data };
@@ -303,6 +303,18 @@ function createConfigManager(app, options = {}) {
             await _writeFile(userConfigPath, JSON.stringify(toWrite, null, 2));
             return true;
         } catch (e) { console.error('Failed to save config:', e.message); return false; }
+    }
+
+    // Read-modify-write spans several awaits (loadConfigFile → merge → writeFile),
+    // so two concurrent callers each merged from the same on-disk snapshot and the
+    // later write silently dropped the other's field — e.g. dragging the OBS
+    // transform slider while the default-audio generation finished saving.
+    // Callers are many and naturally concurrent, so serialize them here.
+    let saveQueue = Promise.resolve();
+    function saveConfigFile(data) {
+        const task = saveQueue.then(() => _saveConfigFile(data), () => _saveConfigFile(data));
+        saveQueue = task.then(() => { }, () => { });
+        return task;
     }
 
     return { loadConfigFile, saveConfigFile, userConfigPath, bundledConfigPath };

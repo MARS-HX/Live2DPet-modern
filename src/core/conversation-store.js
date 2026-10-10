@@ -98,9 +98,13 @@ class ConversationStore {
 
         // 超出上限时裁剪旧记录
         if (this.history.length > this.maxEntries) {
+            // 必须在 slice 之前算「丢掉了多少条」：slice 之后再读 this.history.length
+            // 恒等于 maxEntries，原来的修正项永远是 0 —— lastSummaryIndex 从此被钉在
+            // maxEntries 上，`history.length - lastSummaryIndex >= summaryInterval`
+            // 再也不成立，历史一满 300 条阶段总结就永久停摆。
+            const dropped = this.history.length - this.maxEntries;
             this.history = this.history.slice(-this.maxEntries);
-            // 调整总结索引
-            this.lastSummaryIndex = Math.max(0, this.lastSummaryIndex - (this.history.length - this.maxEntries));
+            this.lastSummaryIndex = Math.max(0, this.lastSummaryIndex - dropped);
         }
 
         await this.save();

@@ -23,6 +23,9 @@ function registerBilibiliIPC(ctx, ipcMain, deps) {
 
     // Coalesce status pushes so a flapping connection cannot flood the renderer.
     let lastStatusPush = 0;
+    let pendingStatus = null;
+    let statusTimer = null;
+    const STATUS_THROTTLE_MS = 500;
     const broadcast = (channel, payload) => {
         const { BrowserWindow } = require('electron');
         for (const win of BrowserWindow.getAllWindows()) {
@@ -38,7 +41,26 @@ function registerBilibiliIPC(ctx, ipcMain, deps) {
     });
     client.on('status', (status) => {
         const now = Date.now();
-        if (now - lastStatusPush < 500) return;
+        const since = now - lastStatusPush;
+        if (since < STATUS_THROTTLE_MS) {
+            // Trailing edge matters: a pure leading-edge throttle drops the LAST
+            // state of a burst. A failure that lands right after "connecting"
+            // (connected:false / auth_failed) was thrown away, so the settings
+            // panel kept showing a live connection that no longer existed.
+            pendingStatus = status;
+            if (!statusTimer) {
+                statusTimer = setTimeout(() => {
+                    statusTimer = null;
+                    if (!pendingStatus) return;
+                    lastStatusPush = Date.now();
+                    const latest = pendingStatus;
+                    pendingStatus = null;
+                    broadcast('bili://status', latest);
+                }, STATUS_THROTTLE_MS - since);
+                if (statusTimer.unref) statusTimer.unref();
+            }
+            return;
+        }
         lastStatusPush = now;
         broadcast('bili://status', status);
     });
@@ -94,6 +116,10 @@ function registerBilibiliIPC(ctx, ipcMain, deps) {
 
     ipcMain.handle('bili-stop', async () => {
         client.stop();
+        // Drop a pending throttled status too, so a coalesced push cannot arrive
+        // after the user stopped and re-advertise a connection that is gone.
+        if (statusTimer) { clearTimeout(statusTimer); statusTimer = null; }
+        pendingStatus = null;
         return { success: true };
     });
 
