@@ -5,7 +5,7 @@
 const fs = require('fs');
 const fsp = require('fs').promises;
 const path = require('path');
-const { encrypt, decrypt } = require('./crypto-utils');
+const { encrypt, decrypt, isEncrypted } = require('./crypto-utils');
 
 const CURRENT_CONFIG_VERSION = 1;
 const ENCRYPTED_FIELDS = ['apiKey', 'translation.apiKey', 'enhance.search.customApiKey', 'bilibili.cookie'];
@@ -143,6 +143,7 @@ function migrateConfig(config) {
 function createConfigManager(app, options = {}) {
     const _encrypt = options.encrypt || encrypt;
     const _decrypt = options.decrypt || decrypt;
+    const _isEncrypted = options.isEncrypted || isEncrypted;
     const basePath = options.basePath || path.join(__dirname, '..', '..');
 
     // Async fs operations (injectable for testing)
@@ -150,18 +151,53 @@ function createConfigManager(app, options = {}) {
     const _writeFile = options.writeFile || ((p, d) => fsp.writeFile(p, d, 'utf-8'));
     const _exists = options.exists || ((p) => fsp.access(p).then(() => true).catch(() => false));
 
+    /**
+     * Decrypt the credential fields.
+     *
+     * One undecryptable value must never take the whole config down. This used to
+     * throw, `loadConfigFile`'s catch turned that into `getDefaultConfig()`, and
+     * the next `saveConfigFile` then wrote those defaults straight over the user's
+     * file — losing the model, the character cards, the OBS port and everything
+     * else. (Real trigger: config.json copied from another machine, or the Windows
+     * hostname / username changing, which changes the key derived from them.)
+     *
+     * The ciphertext is left in place rather than blanked: it is still valid on
+     * the machine that produced it, and `encryptFields` will not re-wrap it.
+     */
     function decryptFields(config) {
-        if (config.apiKey) config.apiKey = _decrypt(config.apiKey);
-        if (config.translation?.apiKey) config.translation.apiKey = _decrypt(config.translation.apiKey);
-        if (config.enhance?.search?.customApiKey) config.enhance.search.customApiKey = _decrypt(config.enhance.search.customApiKey);
-        if (config.bilibili?.cookie) config.bilibili.cookie = _decrypt(config.bilibili.cookie);
+        const safely = (value, label) => {
+            if (!value) return value;
+            try {
+                return _decrypt(value);
+            } catch (e) {
+                console.warn(`[Config] could not decrypt ${label}: ${e.message}`);
+                return value;
+            }
+        };
+        if (config.apiKey) config.apiKey = safely(config.apiKey, 'apiKey');
+        if (config.translation?.apiKey) config.translation.apiKey = safely(config.translation.apiKey, 'translation.apiKey');
+        if (config.enhance?.search?.customApiKey) config.enhance.search.customApiKey = safely(config.enhance.search.customApiKey, 'enhance.search.customApiKey');
+        if (config.bilibili?.cookie) config.bilibili.cookie = safely(config.bilibili.cookie, 'bilibili.cookie');
     }
 
     function encryptFields(config) {
-        if (config.apiKey) config.apiKey = _encrypt(config.apiKey);
-        if (config.translation?.apiKey) config.translation.apiKey = _encrypt(config.translation.apiKey);
-        if (config.enhance?.search?.customApiKey) config.enhance.search.customApiKey = _encrypt(config.enhance.search.customApiKey);
-        if (config.bilibili?.cookie) config.bilibili.cookie = _encrypt(config.bilibili.cookie);
+        // Never double-wrap: a value that is already ciphertext either failed to
+        // decrypt on load (it stays recoverable for the machine that owns it) or
+        // was written by an older run. Encrypting it again would bury it for good.
+        const safely = (value, label) => {
+            if (!value) return value;
+            if (_isEncrypted(value)) return value;
+            try {
+                return _encrypt(value);
+            } catch (e) {
+                console.warn(`[Config] could not encrypt ${label}: ${e.message}`);
+                return value;
+            }
+        };
+        if (config.apiKey) config.apiKey = safely(config.apiKey, 'apiKey');
+        if (config.translation?.apiKey) config.translation.apiKey = safely(config.translation.apiKey, 'translation.apiKey');
+        if (config.enhance?.search?.customApiKey) config.enhance.search.customApiKey = safely(config.enhance.search.customApiKey, 'enhance.search.customApiKey');
+        if (config.bilibili?.cookie) config.bilibili.cookie = safely(config.bilibili.cookie, 'bilibili.cookie');
     }
 
     const bundledConfigPath = path.join(basePath, 'config.json');
@@ -187,7 +223,21 @@ function createConfigManager(app, options = {}) {
                 dsh: { ...defaults.dsh, ...(raw.dsh || {}) },
                 companion: { ...defaults.companion, ...(raw.companion || {}) },
                 bilibili: { ...defaults.bilibili, ...(raw.bilibili || {}) },
-                obs: { ...defaults.obs, ...(raw.obs || {}) },
+                obs: {
+                    ...defaults.obs,
+                    ...(raw.obs || {}),
+                    // browserSource is written field-by-field from different places
+                    // (enabled/port from start-stop, transform from the OBS sliders),
+                    // so merging it shallowly here drops whichever half is absent.
+                    browserSource: {
+                        ...defaults.obs.browserSource,
+                        ...((raw.obs || {}).browserSource || {}),
+                        transform: {
+                            ...defaults.obs.browserSource.transform,
+                            ...(((raw.obs || {}).browserSource || {}).transform || {})
+                        }
+                    }
+                },
                 enhance: {
                     ...defaults.enhance,
                     ...(raw.enhance || {}),
@@ -223,7 +273,23 @@ function createConfigManager(app, options = {}) {
             if (data.dsh) merged.dsh = { ...(existing.dsh || {}), ...data.dsh };
             if (data.companion) merged.companion = { ...(existing.companion || {}), ...data.companion };
             if (data.bilibili) merged.bilibili = { ...(existing.bilibili || {}), ...data.bilibili };
-            if (data.obs) merged.obs = { ...(existing.obs || {}), ...data.obs };
+            if (data.obs) {
+                merged.obs = { ...(existing.obs || {}), ...data.obs };
+                // browserSource is saved piecemeal (`{enabled, port}` from start /
+                // stop, `{transform}` from the OBS sliders), so a shallow merge here
+                // wiped whatever this particular write did not carry: dragging the
+                // scale slider reset `port` to 0, and stopping the server dropped
+                // the user's transform.
+                const bs = data.obs.browserSource;
+                if (bs) {
+                    const prev = (existing.obs || {}).browserSource || {};
+                    merged.obs.browserSource = {
+                        ...prev,
+                        ...bs,
+                        ...(bs.transform ? { transform: { ...(prev.transform || {}), ...bs.transform } } : {})
+                    };
+                }
+            }
             if (data.enhance) {
                 merged.enhance = { ...(existing.enhance || {}), ...data.enhance };
                 if (data.enhance.memory) merged.enhance.memory = { ...(existing.enhance?.memory || {}), ...data.enhance.memory };

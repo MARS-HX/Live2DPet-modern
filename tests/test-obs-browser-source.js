@@ -108,6 +108,25 @@ describe('registerObsBrowserSource', () => {
         assert.strictEqual(source.status.running, false);
     });
 
+    it('start→stop 竞态不会留下永不 settle 的 Promise，之后仍能重启', async () => {
+        const { source } = makeFixture();
+        const racing = source.start(0);
+        source.stop();   // 端口还没绑定完就停
+
+        const settled = await Promise.race([
+            racing,
+            new Promise((resolve) => { setTimeout(() => resolve('TIMEOUT'), 1500); }),
+        ]);
+        assert.notStrictEqual(settled, 'TIMEOUT',
+            'start() 必须被 stop() 结算掉；否则 starting 闩锁会把那个死 Promise 一直返回，本次运行内再也起不来');
+
+        const again = await source.start(0);
+        assert.ok(again.port > 0, '竞态之后必须还能正常启动');
+        assert.strictEqual(source.status.running, true);
+        source.stop();
+        assert.strictEqual(source.status.running, false);
+    });
+
     it('reports running only after listen() has bound a port', async () => {
         const { source } = makeFixture();
         assert.strictEqual(source.status.running, false);

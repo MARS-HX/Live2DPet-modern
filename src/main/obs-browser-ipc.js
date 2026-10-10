@@ -77,36 +77,43 @@ function registerObsBrowserSource(ctx, deps) {
 
     let starting = null;
 
-    async function start(preferredPort = 0) {
-        if (server && server.running) return { port: server.port, url: server.url() };
+    function start(preferredPort = 0) {
+        if (server && server.running) return Promise.resolve({ port: server.port, url: server.url() });
         // Join an in-flight start instead of binding a second port: `server` is
         // assigned before listen() completes, so a concurrent call used to
         // create a second server and leak the first one on its own port.
         if (starting) return starting;
-        starting = (async () => {
+
+        const attempt = (async () => {
             if (server) { try { server.close(); } catch { /* ignore */ } server = null; }
-            server = createObsServer({
+            const srv = createObsServer({
                 http, fs, path, ws, rootDir: basePath,
                 getConfig, getModelDir: resolveModelDir, logger,
             });
+            server = srv;
             try {
-                await server.start(preferredPort);
+                await srv.start(preferredPort);
             } catch (e) {
                 logger.warn?.(`[OBS] browser source failed to start: ${e.message}`);
-                server = null;
+                if (server === srv) server = null;
                 return { error: e.message };
+            }
+            if (server !== srv) {
+                // stop() landed while we were still binding — do not resurrect it.
+                return { error: 'stopped during start' };
             }
             if (!mirrorInstalled) {
                 installMirrors();
                 mirrorInstalled = true;
             }
-            return { port: server.port, url: server.url() };
+            return { port: srv.port, url: srv.url() };
         })();
-        try {
-            return await starting;
-        } finally {
-            starting = null;
-        }
+
+        // Cache the *wrapped* promise: returning the raw one left `starting` set
+        // for good whenever the underlying start never settled, which is exactly
+        // what a start→stop race used to do (server.start() then awaited forever).
+        starting = attempt.finally(() => { starting = null; });
+        return starting;
     }
 
     function stop() {

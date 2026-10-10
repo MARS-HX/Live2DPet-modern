@@ -75,7 +75,16 @@ function normalizeTransform(input = {}) {
  */
 function resolveWithin(root, urlPath) {
     const path = require('path');
-    const decoded = decodeURIComponent(urlPath.split('?')[0]);
+    // decodeURIComponent throws URIError on malformed escapes ("/src/%"), and this
+    // runs inside the HTTP request handler — an exception there is an uncaught
+    // exception in the main process, i.e. a one-request crash for anything that can
+    // reach loopback (including a stray <img src="http://127.0.0.1:PORT/src/%">).
+    let decoded;
+    try {
+        decoded = decodeURIComponent(urlPath.split('?')[0]);
+    } catch {
+        return null;
+    }
     const rel = decoded.replace(/^\/+/, '');
     const full = path.resolve(root, rel);
     const rootResolved = path.resolve(root);
@@ -90,6 +99,8 @@ function createObsServer(deps = {}) {
     let wss = null;
     let port = 0;
     let listening = false;      // true only once listen() has actually bound
+    let startPromise = null;    // in-flight start(), so close() can settle it
+    let abortStart = null;
     const clients = new Set();
 
     function sendJson(res, code, obj) {
@@ -124,7 +135,7 @@ function createObsServer(deps = {}) {
         });
     }
 
-    function handle(req, res) {
+    function route(req, res) {
         const url = req.url || '/';
         const pathOnly = url.split('?')[0];
 
@@ -165,6 +176,26 @@ function createObsServer(deps = {}) {
         res.end('not found');
     }
 
+    /**
+     * Last-resort guard around the router.
+     *
+     * This server is reachable from any local process and from any page the user
+     * visits (an <img src="http://127.0.0.1:PORT/..."> needs no CORS), so nothing
+     * thrown in here may escape: an exception out of a request listener is an
+     * uncaught exception in the main process.
+     */
+    function handle(req, res) {
+        try {
+            route(req, res);
+        } catch (e) {
+            logger.warn?.(`[OBS] request failed (${req.method} ${req.url}): ${e && e.message}`);
+            try {
+                res.writeHead(500);
+                res.end('internal error');
+            } catch { /* headers already sent */ }
+        }
+    }
+
     function broadcast(channel, args) {
         if (!clients.size) return;
         const payload = JSON.stringify({ channel, args: Array.isArray(args) ? args : [args] });
@@ -175,9 +206,13 @@ function createObsServer(deps = {}) {
 
     function start(preferredPort = 0) {
         if (server) return Promise.resolve({ port, url: url() });
-        server = http.createServer(handle);
+        if (startPromise) return startPromise;   // 合并并发启动，别开第二个端口
+
+        const srv = http.createServer(handle);
+        server = srv;
+
         if (WebSocketServer) {
-            wss = new WebSocketServer({ server, path: '/ws' });
+            wss = new WebSocketServer({ server: srv, path: '/ws' });
             wss.on('connection', (sock) => {
                 clients.add(sock);
                 logger.log?.(`[OBS] browser source connected (${clients.size} active)`);
@@ -193,18 +228,48 @@ function createObsServer(deps = {}) {
                 sock.on('error', () => clients.delete(sock));
             });
         }
-        return new Promise((resolve, reject) => {
-            server.once('error', reject);
-            server.listen(preferredPort, '127.0.0.1', () => {
-                port = server.address().port;
+
+        startPromise = new Promise((resolve, reject) => {
+            let settled = false;
+            const settle = (fn, value) => {
+                if (settled) return;
+                settled = true;
+                startPromise = null;
+                abortStart = null;
+                fn(value);
+            };
+
+            // close() may run while listen() is still binding. Its callback would
+            // then either never fire or fire against a torn-down server, leaving
+            // the caller awaiting forever — so close() can settle this promise.
+            abortStart = (err) => settle(reject, err);
+
+            srv.once('error', (err) => {
+                if (server === srv) server = null;
+                settle(reject, err);
+            });
+
+            srv.listen(preferredPort, '127.0.0.1', () => {
+                if (server !== srv) {
+                    settle(reject, new Error('server was closed while starting'));
+                    return;
+                }
+                port = srv.address().port;
                 listening = true;
                 logger.log?.(`[OBS] browser source ready at ${url()}`);
-                resolve({ port, url: url() });
+                settle(resolve, { port, url: url() });
             });
         });
+        return startPromise;
     }
 
     function close() {
+        // Settle an in-flight start() first, otherwise a start→stop race leaves a
+        // promise that never settles (and, once a caller caches it, a server that
+        // can never be started again for the rest of the session).
+        if (abortStart) {
+            try { abortStart(new Error('server closed during start')); } catch { /* ignore */ }
+        }
         for (const c of clients) { try { c.close(); } catch { /* ignore */ } }
         clients.clear();
         if (wss) { try { wss.close(); } catch { /* ignore */ } wss = null; }

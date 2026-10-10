@@ -250,6 +250,75 @@ describe('createConfigManager (async)', () => {
         cm = createConfigManager(mockApp, mockOpts({ [cfgPath(BASE)]: JSON.stringify({ apiKey: 'sk-old-plaintext' }) }));
         assert.strictEqual((await cm.loadConfigFile()).apiKey, 'sk-old-plaintext');
     });
+
+    it('一个字段解不开密时，不会把整份配置重置成默认值', async () => {
+        // 真实触发：config.json 从别的机器拷过来，或改过 Windows 主机名/用户名
+        // —— 解密密钥由这两者派生，密文于是解不开（GCM 校验失败会抛）。
+        const broken = {
+            apiKey: 'enc:v1:00:00:00',
+            modelName: 'my-model',
+            characters: [{ id: 'c1' }],
+            obs: { browserSource: { enabled: true, port: 4242 } }
+        };
+        cm = createConfigManager(mockApp, mockOpts({ [cfgPath(BASE)]: JSON.stringify(broken) }));
+        const cfg = await cm.loadConfigFile();
+        assert.strictEqual(cfg.modelName, 'my-model', '模型名不该被默认值顶掉');
+        assert.deepStrictEqual(cfg.characters, [{ id: 'c1' }], '角色卡不该丢');
+        assert.strictEqual(cfg.obs.browserSource.port, 4242, 'OBS 端口不该被重置');
+    });
+
+    it('解不开密之后写盘，也不会抹掉其它设置，且密文原样保留', async () => {
+        const broken = { apiKey: 'enc:v1:00:00:00', modelName: 'my-model', characters: [{ id: 'c1' }] };
+        cm = createConfigManager(mockApp, mockOpts({ [cfgPath(BASE)]: JSON.stringify(broken) }));
+        // character-manager / bilibili-ipc 就是这种「只写一小块」的调用
+        await cm.saveConfigFile({ bilibili: { roomId: '111' } });
+        const saved = JSON.parse(files[cfgPath(BASE)]);
+        assert.strictEqual(saved.modelName, 'my-model');
+        assert.deepStrictEqual(saved.characters, [{ id: 'c1' }]);
+        assert.strictEqual(saved.bilibili.roomId, '111');
+        assert.strictEqual(saved.apiKey, 'enc:v1:00:00:00',
+            '解不开的密文要原样留着（对原机器仍可恢复），不能被再包一层');
+    });
+
+    it('反复读写不会把 API Key 层层包裹', async () => {
+        cm = createConfigManager(mockApp, mockOpts());
+        await cm.saveConfigFile({ apiKey: 'sk-once' });
+        await cm.saveConfigFile({ interval: 30 });
+        assert.strictEqual((await cm.loadConfigFile()).apiKey, 'sk-once',
+            '第二次写盘后仍应解回原文，而不是解出一层密文');
+    });
+
+    it('saveConfigFile 合并 browserSource，而不是整段替换', async () => {
+        cm = createConfigManager(mockApp, mockOpts({
+            [cfgPath(BASE)]: JSON.stringify({
+                obs: { browserSource: { enabled: true, port: 4242, transform: { scale: 2, x: 10, y: 20 } } }
+            })
+        }));
+
+        // 启停服务器时 obs-ipc 只写 enabled/port
+        await cm.saveConfigFile({ obs: { browserSource: { enabled: true, port: 4243 } } });
+        let saved = JSON.parse(files[cfgPath(BASE)]);
+        assert.strictEqual(saved.obs.browserSource.port, 4243);
+        assert.deepStrictEqual(saved.obs.browserSource.transform, { scale: 2, x: 10, y: 20 },
+            '启停服务器不该清掉用户调好的位置与大小');
+
+        // 拖动 OBS 缩放时只写 transform
+        await cm.saveConfigFile({ obs: { browserSource: { transform: { scale: 1.5, x: 1, y: 2 } } } });
+        saved = JSON.parse(files[cfgPath(BASE)]);
+        assert.strictEqual(saved.obs.browserSource.enabled, true, '改缩放不该丢掉 enabled');
+        assert.strictEqual(saved.obs.browserSource.port, 4243, '改缩放不该丢掉 port');
+        assert.strictEqual(saved.obs.browserSource.transform.scale, 1.5);
+    });
+
+    it('loadConfigFile 给 browserSource 补齐默认值而不是整段替换', async () => {
+        cm = createConfigManager(mockApp, mockOpts({
+            [cfgPath(BASE)]: JSON.stringify({ obs: { browserSource: { port: 5000 } } })
+        }));
+        const cfg = await cm.loadConfigFile();
+        assert.strictEqual(cfg.obs.browserSource.port, 5000);
+        assert.strictEqual(cfg.obs.browserSource.enabled, true, '缺的字段要由默认值补上');
+        assert.deepStrictEqual(cfg.obs.browserSource.transform, { scale: 1, x: 0, y: 0 });
+    });
 });
 
 describe('createI18nHelper', () => {

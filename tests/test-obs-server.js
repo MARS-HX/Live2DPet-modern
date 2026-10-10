@@ -105,6 +105,15 @@ describe('resolveWithin', () => {
         assert.strictEqual(resolveWithin(root, '/%2e%2e/%2e%2e/etc/passwd'), null);
     });
 
+    it('returns null instead of throwing on malformed percent-escapes', () => {
+        // decodeURIComponent('%') throws URIError, and this runs inside the HTTP
+        // request handler — a throw there is an uncaught exception in the main
+        // process, so one request from anything on loopback killed the app.
+        assert.strictEqual(resolveWithin(root, '/src/%'), null);
+        assert.strictEqual(resolveWithin(root, '/src/%zz'), null);
+        assert.strictEqual(resolveWithin(root, '/%'), null);
+    });
+
     it('ignores the query string', () => {
         assert.strictEqual(resolveWithin(root, '/src/a.js?v=2'), path.join(root, 'src', 'a.js'));
     });
@@ -144,6 +153,17 @@ describe('createObsServer', () => {
         }).on('error', () => resolve({ status: 0, body: '' }));
     });
 
+    /** 原样发送路径，不经过 URL 解析——畸形百分号编码才能真的发出去。 */
+    const rawGet = (p, port = server.port) => new Promise((resolve) => {
+        const req = http.request({ host: '127.0.0.1', port, path: p, method: 'GET' }, (res) => {
+            let d = '';
+            res.on('data', (c) => d += c);
+            res.on('end', () => resolve({ status: res.statusCode, body: d }));
+        });
+        req.on('error', () => resolve({ status: 0, body: '' }));
+        req.end();
+    });
+
     it('binds to loopback and reports a url', () => {
         assert.match(server.url(), /^http:\/\/127\.0\.0\.1:\d+\/obs$/);
     });
@@ -180,6 +200,33 @@ describe('createObsServer', () => {
     it('refuses directory traversal', async () => {
         const res = await get('/libs/../../../etc/passwd');
         assert.ok(res.status === 403 || res.status === 404, `expected refusal, got ${res.status}`);
+    });
+
+    it('survives a malformed percent-escape instead of taking the process down', async () => {
+        const res = await rawGet('/src/%');
+        assert.ok(res.status === 403 || res.status === 404, `expected refusal, got ${res.status}`);
+        // The real assertion: the main process is still alive and serving.
+        const alive = await get('/api/config');
+        assert.strictEqual(alive.status, 200);
+    });
+
+    it('turns an unexpected router exception into a 500, not a crash', async () => {
+        const s3 = createObsServer({
+            http, fs, path, ws: require('ws'), rootDir: root,
+            getConfig: () => ({}),
+            getModelDir: () => { throw new Error('boom-detail'); },
+            logger: { log() {}, warn() {}, error() {} },
+        });
+        const r3 = await s3.start(0);
+        try {
+            const res = await rawGet('/model/m.model3.json', r3.port);
+            assert.strictEqual(res.status, 500);
+            assert.ok(!res.body.includes('boom-detail'), 'internal details stay internal');
+            const alive = await rawGet('/api/config', r3.port);
+            assert.strictEqual(alive.status, 200, 'the server must keep serving after a 500');
+        } finally {
+            s3.close();
+        }
     });
 
     it('rejects requests with a foreign Host header', async () => {
