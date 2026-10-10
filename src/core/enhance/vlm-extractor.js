@@ -458,9 +458,14 @@ class VLMExtractor {
         if (this._selectingKf) return;
         this._selectingKf = true;
         try {
-            // Downsample candidates to 512px for the selection call
+            // Snapshot the candidates we are about to show the model. `_kfCandidates`
+            // keeps moving while we await (the 5s capture tick pushes a frame and
+            // shifts the oldest out, and downsampling awaits once per frame), so every
+            // later lookup has to go through this snapshot — indexing the live array
+            // by the model's frame number returned a different frame, or none at all.
+            const considered = this._kfCandidates.slice();
             const candidates = [];
-            for (const c of this._kfCandidates) {
+            for (const c of considered) {
                 const small = await this._downsampleBase64(c.base64, 512);
                 candidates.push({ ...c, base64Small: small });
             }
@@ -486,17 +491,21 @@ class VLMExtractor {
             // Parse JSON array of indices
             const indices = this._parseKfIndices(result, candidates.length);
             if (indices.length > 0) {
-                // Add selected candidates (full resolution) to keyframe buffer
+                // Take the frames the model actually saw, from the snapshot.
                 for (const idx of indices) {
-                    const c = this._kfCandidates[idx];
-                    if (c) this._kfSelected.push({ ...c });
+                    const c = candidates[idx];
+                    if (!c) continue;
+                    const frame = { ...c };
+                    delete frame.base64Small;
+                    this._kfSelected.push(frame);
                 }
                 // Trim to max
                 while (this._kfSelected.length > this._kfSelectedMax) {
                     this._kfSelected.shift();
                 }
-                // Clear used candidates
-                this._kfCandidates = [];
+                // Clear only what the model reviewed: frames captured while we were
+                // waiting were never looked at, so dropping them lost them silently.
+                this._kfCandidates = this._kfCandidates.filter((c) => !considered.includes(c));
                 console.log(`[Enhance:VLM] Keyframe selected: [${indices.join(', ')}], total: ${this._kfSelected.length}`);
             } else {
                 console.log('[Enhance:VLM] Keyframe selection: no valid indices returned');

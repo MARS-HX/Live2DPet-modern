@@ -2,6 +2,21 @@
  * Memory Tracker — Records window focus activity
  * Pure in-memory recording with periodic batch flush to LongTermPool
  */
+/**
+ * Local date key, YYYY-MM-DD.
+ *
+ * `new Date().toISOString().slice(0, 10)` is the UTC day: east of Greenwich the
+ * activity between local midnight and the UTC offset is filed under the previous
+ * day (in UTC+8 everything before 08:00), so "today"/"yesterday" counts and the
+ * 7-day window were both shifted by a day.
+ */
+function localDayKey(date = new Date()) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+}
+
 class MemoryTracker {
     constructor(shortPool, longPool) {
         this.shortPool = shortPool;
@@ -44,7 +59,7 @@ class MemoryTracker {
 
     flush() {
         if (!this.enabled) return;
-        const today = new Date().toISOString().slice(0, 10);
+        const today = localDayKey();
 
         // Snapshot current counts, then reset — new ticks during flush go to fresh map
         const snapshot = this._sessionCounts;
@@ -87,9 +102,10 @@ class MemoryTracker {
     }
 
     _pruneOldTitles(today) {
-        const cutoff = new Date(today);
+        // Work in the same (local) calendar frame as the day keys above.
+        const cutoff = new Date(today + 'T00:00:00');
         cutoff.setDate(cutoff.getDate() - this.retentionDays);
-        const cutoffStr = cutoff.toISOString().slice(0, 10);
+        const cutoffStr = localDayKey(cutoff);
 
         for (const title of this.longPool.getAllTitles()) {
             const mem = this.longPool.getForTitle(title, 'memory');
@@ -102,4 +118,7 @@ class MemoryTracker {
     getSessionCounts() { return { ...this._sessionCounts }; }
 }
 
-if (typeof window !== 'undefined') window.MemoryTracker = MemoryTracker;
+if (typeof window !== 'undefined') {
+    window.MemoryTracker = MemoryTracker;
+    window.localDayKey = localDayKey;
+}

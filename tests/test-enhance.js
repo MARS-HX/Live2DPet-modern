@@ -237,6 +237,27 @@ describe('MemoryTracker', () => {
         assert.strictEqual(mt.retentionDays, 30);
     });
 
+    it('localDayKey 用本地日期（回归：UTC 日会把凌晨的活动算到前一天）', () => {
+        const key = global.window.localDayKey;
+        assert.strictEqual(typeof key, 'function');
+        // 本地 2026-01-02 00:30 —— 在东半球，UTC 那边还是 2026-01-01。
+        // 旧的 toISOString().slice(0,10) 在这里会给出前一天。
+        assert.strictEqual(key(new Date(2026, 0, 2, 0, 30, 0)), '2026-01-02');
+        assert.strictEqual(key(new Date(2026, 11, 31, 23, 30, 0)), '2026-12-31');
+    });
+
+    it('flush 按本地日期归档', () => {
+        const sp = new ShortTermPool();
+        const lp = new LongTermPool();
+        const mt = new MemoryTracker(sp, lp);
+        mt.recordFocus('Chrome');
+        mt.flush();
+        const mem = lp.getForTitle('Chrome', 'memory');
+        assert.strictEqual(mem.lastSeen, global.window.localDayKey(),
+            'lastSeen 必须和本地日历一致');
+        assert.deepStrictEqual(Object.keys(mem.recentDays), [global.window.localDayKey()]);
+    });
+
     it('recordFocus accumulates counts', () => {
         const sp = new ShortTermPool();
         const lp = new LongTermPool();
@@ -870,6 +891,39 @@ describe('VLMExtractor', () => {
         assert.strictEqual(vlm.situationMap['title0'], undefined);
         assert.strictEqual(vlm.situationMap['title1'], undefined);
         assert.ok(vlm.situationMap['title4']);
+    });
+
+    it('关键帧选择用模型当时看到的那份快照（回归：await 期间用旧下标回查已变动的数组）', async () => {
+        const sp = new ShortTermPool();
+        const lp = new LongTermPool();
+        let release;
+        const gate = new Promise((r) => { release = r; });
+        const vlm = new VLMExtractor(sp, lp, { callAPI: async () => '[0]' });   // 模型选了 Frame 0
+        vlm._kfCandidates = [
+            { title: 'A', base64: 'A-full', timestamp: 1000, marker: 'first' },
+            { title: 'B', base64: 'B-full', timestamp: 2000, marker: 'second' },
+        ];
+        // 让第一帧的降采样挂住，好在中途模拟 5 秒 _captureTick 的 push + shift
+        let downsampleCalls = 0;
+        vlm._downsampleBase64 = async (b64) => {
+            downsampleCalls += 1;
+            if (downsampleCalls === 1) await gate;
+            return 'small:' + b64;
+        };
+
+        const selecting = vlm._maybeSelectKeyframes();
+        await new Promise((r) => setTimeout(r, 5));
+        vlm._kfCandidates.push({ title: 'C', base64: 'C-full', timestamp: 3000, marker: 'third' });
+        vlm._kfCandidates.shift();          // FIFO 满员：最老的一帧被挤掉，整体前移
+        release();
+        await selecting;
+
+        assert.strictEqual(vlm._kfSelected.length, 1);
+        assert.strictEqual(vlm._kfSelected[0].marker, 'first',
+            '模型选的是 Frame 0，就必须是它当时看到的那个「A」，而不是平移之后的「B」');
+        assert.strictEqual(vlm._kfSelected[0].base64Small, undefined, '选中帧不该带降采样副本');
+        assert.deepStrictEqual(vlm._kfCandidates.map((c) => c.marker), ['third'],
+            '等待模型期间抓到的新帧没被模型看过，不该被一起丢掉');
     });
 
     it('resetInterval clears tracking', () => {
