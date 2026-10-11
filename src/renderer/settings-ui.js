@@ -1144,6 +1144,34 @@ document.getElementById('btn-test-tts').addEventListener('click', async () => {
     }
 });
 
+// ========== 让宠物说指定文案 ==========
+// 合成在主进程做，音频交给宠物窗播放；宠物窗用 Web Audio 逐帧分析出开合度驱动
+// ParamMouthOpenY，同一条 pet-say 也会被 OBS 镜像转发给浏览器源（那边同样播放+动嘴）。
+document.getElementById('btn-pet-say')?.addEventListener('click', async () => {
+    const input = document.getElementById('pet-say-text');
+    const text = (input && input.value || '').trim();
+    if (!text) {
+        showStatus('pet-say-status', t('pet.say.needText'), 'error');
+        return;
+    }
+    showStatus('pet-say-status', t('pet.say.synthesizing'), '');
+    const result = await window.electronAPI.petSay(text);
+    if (result && result.success) {
+        showStatus('pet-say-status', t('pet.say.sent'), 'success');
+    } else {
+        const why = (result && result.error) || t('tts.unknownError');
+        showStatus('pet-say-status', t('pet.say.failed') + why, 'error');
+    }
+});
+
+// 「停下」：让宠物闭嘴并释放音频（口型值一并清零，避免停在张嘴状态）
+document.getElementById('btn-pet-say-stop')?.addEventListener('click', async () => {
+    try {
+        await window.electronAPI.setMouthLevel(0);
+    } catch (e) { /* 尽力而为 */ }
+    showStatus('pet-say-status', t('pet.say.stopped'), '');
+});
+
 // Restart TTS button
 document.getElementById('btn-restart-tts')?.addEventListener('click', async () => {
     const el = document.getElementById('tts-status');

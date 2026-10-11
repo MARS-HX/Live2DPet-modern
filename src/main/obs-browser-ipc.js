@@ -127,7 +127,13 @@ function registerObsBrowserSource(ctx, deps) {
 
     // Keep mirrors attached whenever a window (re)appears.
     app.on?.('browser-window-created', (_e, win) => {
-        if (win === ctx.petWindow || win === ctx.chatBubbleWindow) installMirror(win);
+        // 必须延后一拍再比对身份：`new BrowserWindow()` 是在**构造期间**同步发出这个
+        // 事件的，而 `ctx.petWindow = new BrowserWindow(...)` 要等构造返回才赋值 ——
+        // 当场比较时 ctx.petWindow 还是 null（或旧窗口），于是永远比不中，
+        // 宠物窗与气泡窗一个都不会被包装，OBS 里就什么动作都看不到。
+        setImmediate(() => {
+            if (win === ctx.petWindow || win === ctx.chatBubbleWindow) installMirror(win);
+        });
     });
 
     app.on?.('before-quit', stop);

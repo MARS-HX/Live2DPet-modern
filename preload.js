@@ -79,6 +79,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     selectImageFolder: () => ipcRenderer.invoke('select-image-folder'),
     scanImageFolder: (folderPath) => ipcRenderer.invoke('scan-image-folder', folderPath),
     setTalkingState: (isTalking) => ipcRenderer.invoke('set-talking-state', isTalking),
+    // 让宠物说出指定文案（合成交给主进程；宠物窗与 OBS 源各自播放并驱动口型）
+    petSay: (text, options) => ipcRenderer.invoke('pet-say', text, options || {}),
+    // 在别的窗口里播音频时，由播放方每帧上报口型开合度
+    setMouthLevel: (level) => ipcRenderer.invoke('set-mouth-level', level),
     selectBubbleImage: () => ipcRenderer.invoke('select-bubble-image'),
     selectAppIcon: () => ipcRenderer.invoke('select-app-icon'),
     copyModelToUserdata: (folder, modelName) => ipcRenderer.invoke('copy-model-to-userdata', folder, modelName),
@@ -157,6 +161,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onRevertExpression: (cb) => onIpc('revert-expression', () => cb()),
     onPlayMotion: (cb) => onIpc('play-motion', (e, group, index) => cb(group, index)),
     onTalkingStateChanged: (cb) => onIpc('talking-state-changed', (e, isTalking) => cb(isTalking)),
+    onPetSay: (cb) => onIpc('pet-say', (e, payload) => cb(payload)),
+    onMouthLevel: (cb) => onIpc('mouth-level', (e, level) => cb(level)),
     onPetHoverState: (cb) => onIpc('pet-hover-state', (e, hovering) => cb(hovering)),
     onPetHit: (cb) => onIpc('pet-hit', (e, data) => cb(data)),
     onModelConfigUpdate: (cb) => onIpc('model-config-update', (e, config) => cb(config)),

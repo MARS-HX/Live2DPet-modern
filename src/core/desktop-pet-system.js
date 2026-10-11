@@ -21,6 +21,8 @@ class DesktopPetSystem {
         this.currentAudioUrl = null;
         this.currentSession = null;
         this._audioResolve = null;       // settles the in-flight playback promise
+        this._mouthReport = null;        // rAF handle for lip-sync level reporting
+        this._mouthCtx = null;           // AudioContext used for that analysis
 
         // Screenshot: captured on-demand in sendRequest (VLM captures independently)
         this.screenshotTimer = null; // kept for API compat, unused
@@ -873,6 +875,74 @@ class DesktopPetSystem {
     }
 
     /**
+     * 说话时把口型开合度上报给主进程；主进程转发给宠物窗，并（由 OBS 镜像）转给浏览器源。
+     * 用 <audio> 元素自身做分析源：它的 src 是 blob: URL，与页面同源，能直接进 Web Audio
+     * （data: URL 就不行 —— 那是跨源，createMediaElementSource 会抛 SecurityError）。
+     */
+    _startMouthReporting(audio) {
+        this._stopMouthReporting();
+        const Ctx = (typeof window !== 'undefined') && (window.AudioContext || window.webkitAudioContext);
+        if (!Ctx || !window.electronAPI || !window.electronAPI.setMouthLevel) return;
+        try {
+            const ctx = new Ctx();
+            const src = ctx.createMediaElementSource(audio);
+            const analyser = ctx.createAnalyser();
+            analyser.fftSize = 1024;
+            const gain = ctx.createGain();
+            gain.gain.value = 1;                 // 照常出声
+            src.connect(analyser);
+            analyser.connect(gain);
+            gain.connect(ctx.destination);
+
+            const view = new Float32Array(analyser.fftSize);
+            const Lip = window.LipSync || null;
+            let level = 0;
+            let lastSent = -1;
+            const tick = () => {
+                if (!this._mouthReport) return;
+                let rms = 0;
+                try {
+                    analyser.getFloatTimeDomainData(view);
+                    let sum = 0;
+                    for (let i = 0; i < view.length; i++) sum += view[i] * view[i];
+                    rms = Math.sqrt(sum / view.length);
+                } catch (e) {
+                    rms = 0;
+                }
+                const target = Lip ? Lip.rmsToLevel(rms) : 0;
+                level = Lip ? Lip.smoothLevel(level, target) : target;
+                // 只在变化明显时上报：说话时大约每秒十几次 IPC，而不是每帧六十次
+                if (Math.abs(level - lastSent) > 0.02 || (level === 0 && lastSent !== 0)) {
+                    lastSent = level;
+                    try { window.electronAPI.setMouthLevel(level); } catch (e) { /* 尽力而为 */ }
+                }
+                this._mouthReport = window.requestAnimationFrame(tick);
+            };
+            this._mouthCtx = ctx;
+            this._mouthReport = window.requestAnimationFrame(tick);
+        } catch (e) {
+            console.warn('[DesktopPetSystem] 口型分析不可用:', e.message);
+            this._mouthCtx = null;
+            this._mouthReport = null;
+        }
+    }
+
+    _stopMouthReporting() {
+        if (this._mouthReport) {
+            try { window.cancelAnimationFrame(this._mouthReport); } catch (e) { /* ignore */ }
+            this._mouthReport = null;
+        }
+        if (this._mouthCtx) {
+            try { this._mouthCtx.close(); } catch (e) { /* 已经关了 */ }
+            this._mouthCtx = null;
+        }
+        // 收尾必须报一次 0：否则宠物窗的嘴会停在张开状态
+        try {
+            if (window.electronAPI && window.electronAPI.setMouthLevel) window.electronAPI.setMouthLevel(0);
+        } catch (e) { /* 尽力而为 */ }
+    }
+
+    /**
      * Play a prepared Audio element. Returns Promise that resolves when playback ends.
      */
     _playPreparedAudio(audio) {
@@ -885,6 +955,8 @@ class DesktopPetSystem {
                 if (settled) return;
                 settled = true;
                 if (this._audioResolve === finish) this._audioResolve = null;
+                // 口型收尾要先于拆元素：上报 0 让宠物窗闭嘴
+                this._stopMouthReporting();
                 // Only tear down the element this promise owns: a newer playback
                 // may already own currentAudio.
                 if (this.currentAudio === audio) this.stopCurrentAudio();
@@ -893,6 +965,7 @@ class DesktopPetSystem {
             // stopCurrentAudio() settles this through _audioResolve, because
             // pausing an element never fires 'ended'.
             this._audioResolve = finish;
+            this._startMouthReporting(audio);
             audio.addEventListener('ended', finish);
             audio.addEventListener('error', finish);
             audio.play().catch(finish);

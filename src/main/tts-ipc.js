@@ -246,4 +246,4 @@ function registerTTSIPC(ctx, ipcMain, deps) {
     ipcMain.handle('setup-voicevox', async () => ({ success: false, error: 'VOICEVOX is removed' }));
 }
 
-module.exports = { registerTTSIPC };
+module.exports = { registerTTSIPC, splitForTTS, concatWavBuffers };

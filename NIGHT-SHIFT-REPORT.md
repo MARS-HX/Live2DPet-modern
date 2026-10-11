@@ -257,3 +257,51 @@ git cherry-pick <commit>
    `const f = () => {}` 或 `x = function(){}` 形式看不见。
 5. **`config.stale-from-stash.json`** 是我为恢复而留的旧配置副本（未提交），对照完可删。
 6. **`assets/prompts/b72f84ec-….json`** 是你自己的未提交改动，我没碰、也没提交。
+
+---
+
+## 附：后续新增 —— 让宠物说指定文案 + 说话口型同步 + OBS 同步
+
+（这是之后单独提的需求，实现在同一个分支上。）
+
+**怎么用**
+- 设置窗 →「让宠物说」卡片：输入文字 →「说出来」；「停下」立刻闭嘴。
+- 脚本 / DSH：`window.electronAPI.petSay('要说的文案', { audible: true, showBubble: true })`
+  → `{ success, chars, bytes }`；失败时 `error ∈ empty_text | too_long | tts_unavailable | no_pet_window | synthesis_failed`。
+- 单次上限 500 字（再长会把一大段音频塞进一次 IPC 广播）。
+
+**口型是怎么算出来的**
+1. 主进程沿用 `tts-synthesize` 那套分句 + WAV 拼接，合成整段音频后经 `pet-say` 发给宠物窗；
+2. 宠物窗用 Web Audio 解码成 AudioBuffer 播放 —— 不用 `<audio>` + MediaElementSource，
+   因为 data: URL 对 Web Audio 属于跨源，`createMediaElementSource` 会抛 SecurityError；
+   每帧取时域 RMS；
+3. `RMS → 0..1`，张开快、闭合慢地平滑，写进口型参数；
+4. 口型参数**加载时自动识别**（通用命名 `ParamMouthOpenY` 等，并排除 `ParamMouthForm`），
+   换模型不用改配置；模型没有该参数时打一行 warn 并静默跳过；
+5. **自适应增益**：用当前这句话的音量做参考再归一化，所以小声的 TTS 也会把嘴张开 ——
+   实测同一句文案，固定增益下峰值 0.43，自适应后 1.00。另外若 `AudioContext` 处于
+   suspended（自动播放策略），会先 `resume()`，否则分析恒为 0、嘴一动不动。
+
+**OBS 侧**
+浏览器源收到的是同一条 `pet-say`（含音频；`audible: true` 时它自己也出声），跑的是同一套
+lip-sync 代码 —— 屏幕上的宠物与 OBS 里的口型各自从同一份音频分析。AI 回复那种"音频在别的
+窗口播"的情况，由播放方每帧 `setMouthLevel()` 上报，主进程转发给宠物窗并镜像给 OBS。
+
+**实测（真实进程，不是单测）**
+- `[Live2DAdapter] 口型参数: ParamMouthOpenY`
+- `[PetSay] → 宠物窗（24 字，686140 字节 base64）`
+- `[DesktopPet] 口型: 峰值 1.00，有效帧 810/1133`
+- 冒充 OBS 浏览器源的 WebSocket 客户端收到：`pet-say` ×1、`mouth-level` ×4、
+  `talking-state-changed` ×2、`chat-bubble-message` ×1
+
+**顺手修掉的两个真 bug（都直接卡住"OBS 里看得到模型动作"）**
+1. `installMirror` 把 `win.isDestroyed` 当值用（恒真）→ 镜像整体失效（见 §二）。
+2. `browser-window-created` 是在 `new BrowserWindow()` **构造期间**同步发出的，而
+   `ctx.petWindow` 要等构造返回才赋值 → 当场比对身份永远比不中，**OBS 源启动之后才创建的
+   宠物窗 / 气泡窗一个都不会被镜像**。改为延后一拍比对；已加回归用例（旧代码下报"实际收到 []"）。
+
+**已知限制**
+- 这个模型（kailuo）的 `model3.json` **没有 Motions 段**，所以 `playMotion()` 是空转；
+  目录里躺着一个没被引用的 `daiji.motion3.json`。要播它得把该文件接进 model3.json
+  （或由程序在内存里注入 Motions 段）—— 这属于动你的模型文件，我没动，等你决定。
+- `ParamMouthOpenY` 是音量驱动的开合，不是元音级口型。

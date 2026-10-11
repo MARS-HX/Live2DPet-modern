@@ -16,6 +16,8 @@ class ModelAdapter {
     playMotion(group, index) { }
     stopMotion() { }
     updateParams(trackX, trackY) { }
+    /** 口型开合度（0..1）。图片/空适配器没有嘴，这里就是空实现。 */
+    setMouthLevel(level) { }
     resize(width, height) { }
     destroy() { }
     getType() { return 'none'; }
@@ -33,6 +35,8 @@ class Live2DAdapter extends ModelAdapter {
         this._expressionCache = {};   // {name: [{Id, Value, Blend}]}
         this._activeExprParams = null; // current expression param overrides
         this._modelDir = null;         // resolved model directory URL
+        this._mouthParamId = null;     // 口型参数（加载时自动识别）
+        this._mouthLevel = 0;          // 由 lip-sync 每帧喂进来的 0..1
     }
 
     async load(container) {
@@ -99,8 +103,39 @@ class Live2DAdapter extends ModelAdapter {
                 if (!this.model || !this.paramMap) return;
                 this._applyTracking();
                 this._applyExpression();
+                this._applyMouth();
             });
         }
+    }
+
+    /**
+     * 识别口型参数。优先用配置里指定的，否则在模型的参数表里按通用命名找。
+     * 排除 Form（嘴变形）：那是表情形状，范围是 -1..1，拿它当"张开度"用会把嘴一直拉成笑。
+     */
+    _pickMouthParam() {
+        const configured = (this.config.paramMapping || {}).mouthOpenY;
+        if (configured && this.paramMap && this.paramMap[configured] !== undefined) return configured;
+        const ids = Object.keys(this.paramMap || {});
+        const patterns = [/^parammouthopeny$/i, /^mouthopeny$/i, /mouth.*open/i, /open.*mouth/i, /^parammouth/i];
+        for (const re of patterns) {
+            const hit = ids.find((id) => re.test(id) && !/form/i.test(id));
+            if (hit) return hit;
+        }
+        return null;
+    }
+
+    /**
+     * 由 lip-sync 喂入口型开合度（0..1）。不在说话时传 0。
+     * 没有口型参数的模型这里就是空转，不会报错。
+     */
+    setMouthLevel(level) {
+        const v = Number(level);
+        this._mouthLevel = Number.isFinite(v) ? (v < 0 ? 0 : (v > 1 ? 1 : v)) : 0;
+    }
+
+    _applyMouth() {
+        if (!this._mouthParamId) return;
+        this._setParam(this._mouthParamId, this._mouthLevel || 0);
     }
 
     _fitModel() {
@@ -120,6 +155,12 @@ class Live2DAdapter extends ModelAdapter {
             this.paramMap = {};
             for (let i = 0; i < m.parameters.count; i++) {
                 this.paramMap[m.parameters.ids[i]] = i;
+            }
+            this._mouthParamId = this._pickMouthParam();
+            if (this._mouthParamId) {
+                console.log(`[Live2DAdapter] 口型参数: ${this._mouthParamId}`);
+            } else {
+                console.warn('[Live2DAdapter] 这个模型没有可识别的口型参数，说话时不会有口型');
             }
         } catch (e) {
             console.error('[Live2DAdapter] Failed to build param map:', e);

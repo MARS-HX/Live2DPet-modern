@@ -161,6 +161,8 @@
     api_.onRevertExpression = on('revert-expression');
     api_.onPlayMotion = on('play-motion');
     api_.onTalkingStateChanged = on('talking-state-changed');
+    api_.onPetSay = on('pet-say');
+    api_.onMouthLevel = on('mouth-level');
     api_.onSetCanvasY = on('set-canvas-y');
     api_.onCharacterUpdate = on('character-update');
     api_.onModelConfigUpdate = on('model-config-update');
@@ -175,6 +177,9 @@
     api_.showSettings = noop;
     api_.closePetWindow = noop;
     api_.createChatWindow = noop;
+    // 浏览器源自己能放音、能摇头，但合成必须在主进程做 —— 这里没有那个后端。
+    api_.petSay = async () => ({ success: false, error: 'read_only_browser_source' });
+    api_.setMouthLevel = noop;
 
     // The OBS page is a display surface: no dragging, no hover controls.
     api_.isBrowserSource = true;

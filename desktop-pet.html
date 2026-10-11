@@ -238,6 +238,7 @@
     <script src="src/core/ai-chat.js"></script>
     <script src="src/core/conversation-store.js"></script>
     <script src="src/renderer/model-adapter.js"></script>
+    <script src="src/renderer/lip-sync.js"></script>
     <script>
         let currentAdapter = null;
         let trackX = 0, trackY = 0;
@@ -377,6 +378,63 @@
             window.electronAPI.onTalkingStateChanged((isTalking) => {
                 // ImageAdapter handles this internally via its own listener
                 // This is a fallback in case the adapter registered after the event
+            });
+        }
+
+        // ========== 口型同步（说话时嘴真的动） ==========
+        // 音频由主进程合成，经 pet-say 送到这里播放；播放时用 Web Audio 取每一帧的
+        // 时域 RMS 写成 ParamMouthOpenY。OBS 浏览器源收到同一条 pet-say，走同一套代码，
+        // 所以屏幕上的宠物和 OBS 里的口型是同一份数据算出来的。
+        const lipSync = (window.LipSync && window.LipSync.LipSyncPlayer)
+            ? new window.LipSync.LipSyncPlayer({ logger: console })
+            : null;
+
+        function applyMouthLevel(level) {
+            if (currentAdapter && typeof currentAdapter.setMouthLevel === 'function') {
+                currentAdapter.setMouthLevel(level);
+            }
+        }
+
+        if (window.electronAPI && window.electronAPI.onPetSay) {
+            window.electronAPI.onPetSay(async (payload) => {
+                if (!payload || !payload.wav) return;
+                console.log('[DesktopPet] pet-say:', payload.text);
+                if (payload.showBubble !== false && window.electronAPI.showPetChat) {
+                    try {
+                        await window.electronAPI.showPetChat(payload.text, 8000);
+                    } catch (e) { /* 气泡只是陪衬，失败不该影响说话 */ }
+                }
+                if (!lipSync) {
+                    console.warn('[DesktopPet] lip-sync 未加载，这次只出声不动嘴');
+                    return;
+                }
+                try { if (window.electronAPI.setTalkingState) await window.electronAPI.setTalkingState(true); } catch (e) { /* 尽力而为 */ }
+                // 顺带统计口型：峰值 + 有效帧数。既是排查手段，也能让人一眼看出
+                // "到底动没动" —— 只报 0 就说明模型没有口型参数或音频没解析成功。
+                let peak = 0;
+                let activeFrames = 0;
+                let totalFrames = 0;
+                const res = await lipSync.play(payload.wav, {
+                    audible: payload.audible !== false,
+                    onLevel: (level) => {
+                        totalFrames += 1;
+                        if (level > peak) peak = level;
+                        if (level > 0.05) activeFrames += 1;
+                        applyMouthLevel(level);
+                    },
+                });
+                console.log(`[DesktopPet] 口型: 峰值 ${peak.toFixed(2)}，有效帧 ${activeFrames}/${totalFrames}`);
+                if (!res || !res.ok) console.warn('[DesktopPet] 语音播放失败:', res && res.reason);
+                try { if (window.electronAPI.setTalkingState) await window.electronAPI.setTalkingState(false); } catch (e) { /* 尽力而为 */ }
+            });
+        }
+
+        // 音频在别的窗口播（比如 AI 回复由 index.html 播放）时，由播放方每帧上报开合度。
+        // 本地正在播时以本地分析为准，避免两条来源互相打架。
+        if (window.electronAPI && window.electronAPI.onMouthLevel) {
+            window.electronAPI.onMouthLevel((level) => {
+                if (lipSync && lipSync.playing) return;
+                applyMouthLevel(level);
             });
         }
 

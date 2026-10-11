@@ -188,6 +188,67 @@ describe('registerObsBrowserSource', () => {
         }
     });
 
+    it('OBS 源启动之后才创建的宠物窗也必须装上镜像（回归：构造期事件早于赋值）', async () => {
+        // 真实顺序是 `ctx.petWindow = new BrowserWindow(...)`，而 browser-window-created
+        // 是在**构造期间**同步发出的 —— 那时 ctx.petWindow 还没赋值。旧代码当场比较身份，
+        // 于是永远比不中：宠物窗、气泡窗一个都不会被包装，OBS 里什么动作都看不到。
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'obs-late-'));
+        const modelDir = fs.mkdtempSync(path.join(os.tmpdir(), 'obs-late-model-'));
+        _fixtureDirs.push(root, modelDir);
+        fs.writeFileSync(path.join(root, 'desktop-pet.html'), '<html><body>pet</body></html>');
+
+        const handlers = {};
+        const app = {
+            isPackaged: false,
+            getPath: () => root,
+            on: (evt, cb) => { handlers[evt] = cb; },
+            whenReady: () => Promise.resolve(),
+        };
+        const ctx = {};
+        const source = registerObsBrowserSource(ctx, {
+            app, http, fs, path, ws: require('ws'), basePath: root,
+            configManager: {
+                loadConfigFile: async () => ({ model: { folderPath: modelDir } }),
+                saveConfigFile: async () => {},
+            },
+            logger: { log() {}, warn() {}, error() {} },
+        });
+        const res = await source.start(0);
+        assert.ok(res.port, 'OBS 源应当起来');
+
+        const WebSocket = require('ws');
+        const sock = new WebSocket(`ws://127.0.0.1:${res.port}/ws`);
+        sock.on('error', () => { /* 拆服务器时会被重置 */ });
+        const seen = [];
+        sock.on('message', (m) => seen.push(JSON.parse(m.toString())));
+        try {
+            await new Promise((r) => sock.on('open', r));
+            await new Promise((r) => setTimeout(r, 150));
+            seen.length = 0;   // 丢掉 init
+
+            const sent = [];
+            const win = {
+                isDestroyed: () => false,
+                webContents: { send: (ch, ...args) => sent.push([ch, ...args]) },
+            };
+            // ★ 先发事件（此刻 ctx.petWindow 还是空的），再赋值 —— 与真实顺序一致
+            handlers['browser-window-created']({}, win);
+            ctx.petWindow = win;
+            await new Promise((r) => setImmediate(r));
+            await new Promise((r) => setImmediate(r));
+
+            win.webContents.send('play-expression', '兴奋');
+            await new Promise((r) => setTimeout(r, 200));
+
+            assert.strictEqual(sent.length, 1, '原 send 必须照常调用');
+            assert.ok(seen.some((s) => s.channel === 'play-expression'),
+                `后创建的宠物窗必须被镜像；实际收到 ${JSON.stringify(seen.map((s) => s.channel))}`);
+        } finally {
+            try { sock.terminate(); } catch (e) { /* 已经断了 */ }
+            source.stop();
+        }
+    });
+
     it('reports running only after listen() has bound a port', async () => {
         const { source } = makeFixture();
         assert.strictEqual(source.status.running, false);

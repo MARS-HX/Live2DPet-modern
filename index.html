@@ -651,6 +651,18 @@
             <div class="status" id="tts-test-status"></div>
             <div class="status" id="tts-diagnose-status"></div>
         </div>
+
+        <!-- 让宠物说指定文案：合成 → 宠物窗播放 → 口型同步 → OBS 浏览器源同步 -->
+        <div class="card">
+            <h2 data-i18n="pet.say.title">让宠物说</h2>
+            <input type="text" id="pet-say-text" data-i18n-ph="pet.say.placeholder" value="大家好呀，我是你的桌面宠物～">
+            <button class="btn" id="btn-pet-say" data-i18n="pet.say.btn">说出来</button>
+            <button class="btn btn-secondary" id="btn-pet-say-stop" style="margin-left:4px;" data-i18n="pet.say.stop">停下</button>
+            <div class="status" id="pet-say-status"></div>
+            <div class="status" style="font-size:11px;color:#888;" data-i18n="pet.say.hint">
+                说的时候模型会同步动嘴；OBS 浏览器源里也会同步（声音也一起过去）。
+            </div>
+        </div>
     </div>
 
     <!-- Prompt Tab -->
@@ -814,6 +826,8 @@
     <!-- 离线语音识别：PCM 转换在前，采集封装依赖它 -->
     <script src="src/core/pcm-util.js"></script>
     <script src="src/renderer/offline-asr.js"></script>
+    <!-- 口型：说话时把开合度算出来上报（宠物窗与 OBS 浏览器源都用同一份值） -->
+    <script src="src/renderer/lip-sync.js"></script>
     <script src="src/core/desktop-pet-system.js"></script>
     <script src="src/renderer/settings-ui.js"></script>
 </body>
