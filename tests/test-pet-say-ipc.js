@@ -209,6 +209,23 @@ describe('pet-say', () => {
     });
 });
 
+describe('pet-say-stop', () => {
+    it('会告诉宠物窗停下（不只是把嘴闭上，音频也要断）', async () => {
+        const h = makeHarness();
+        assert.ok(h.has('pet-say-stop'), '必须注册 pet-say-stop');
+        const res = await h.call('pet-say-stop');
+        assert.strictEqual(res.success, true);
+        assert.deepStrictEqual(h.sent[0], ['pet-say-stop']);
+    });
+
+    it('没有宠物窗时也不报错', async () => {
+        const h = makeHarness({ petWindow: null });
+        const res = await h.call('pet-say-stop');
+        assert.strictEqual(res.success, true);
+        assert.strictEqual(h.sent.length, 0);
+    });
+});
+
 describe('set-mouth-level', () => {
     it('把口型值转发给宠物窗（OBS 由镜像自动拿到）', async () => {
         const h = makeHarness();

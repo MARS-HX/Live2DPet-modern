@@ -429,6 +429,15 @@
             });
         }
 
+        // 「停下」：真的掐掉音频（不只是把嘴闭上）
+        if (window.electronAPI && window.electronAPI.onPetSayStop) {
+            window.electronAPI.onPetSayStop(() => {
+                if (lipSync) lipSync.stop();
+                applyMouthLevel(0);
+                console.log('[DesktopPet] 已停止说话');
+            });
+        }
+
         // 音频在别的窗口播（比如 AI 回复由 index.html 播放）时，由播放方每帧上报开合度。
         // 本地正在播时以本地分析为准，避免两条来源互相打架。
         if (window.electronAPI && window.electronAPI.onMouthLevel) {

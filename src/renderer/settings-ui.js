@@ -1164,8 +1164,11 @@ document.getElementById('btn-pet-say')?.addEventListener('click', async () => {
     }
 });
 
-// 「停下」：让宠物闭嘴并释放音频（口型值一并清零，避免停在张嘴状态）
+// 「停下」：让宠物真的闭嘴停声（口型值一并清零，避免停在张嘴状态）
 document.getElementById('btn-pet-say-stop')?.addEventListener('click', async () => {
+    try {
+        await window.electronAPI.petSayStop();
+    } catch (e) { /* 尽力而为 */ }
     try {
         await window.electronAPI.setMouthLevel(0);
     } catch (e) { /* 尽力而为 */ }

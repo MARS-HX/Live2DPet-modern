@@ -78,6 +78,17 @@ function registerPetSayIPC(ctx, ipcMain, deps = {}) {
         }
     });
 
+    ipcMain.handle('pet-say-stop', async () => {
+        try {
+            if (petWindowAlive()) {
+                ctx.petWindow.webContents.send('pet-say-stop');
+            }
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: (error && error.message) || 'pet_say_stop_failed' };
+        }
+    });
+
     ipcMain.handle('set-mouth-level', async (event, rawLevel) => {
         try {
             const v = Number(rawLevel);
