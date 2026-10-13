@@ -13,3 +13,8 @@ build.bat
 # config.example.json is the shareable template; copy it to config.json.
 config.json
 enhance-data.json
+
+# Any leftover/stale copy of the real config must never be committed:
+# it holds live API keys. Only the template is tracked.
+config*.json
+!config.example.json
