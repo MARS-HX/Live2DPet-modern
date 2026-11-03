@@ -101,10 +101,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             document.getElementById('chat-gap').value = fileConfig.chatGap;
             petSystem.chatGapMs = parseInt(fileConfig.chatGap) * 1000;
         }
-        if (fileConfig.screenshotInterval != null) {
-            document.getElementById('screenshot-interval').value = fileConfig.screenshotInterval;
-            petSystem.screenshotInterval = parseInt(fileConfig.screenshotInterval);
-        }
+        renderIntervalHint(fileConfig);
 
         // Load model config
         currentModelConfig = fileConfig.model || { type: 'none' };
@@ -112,8 +109,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         loadEmotionUI(fileConfig);
         // Load max_tokens multiplier
         loadTokenMultiplierUI(fileConfig.maxTokensMultiplier || 1.0);
-        // Load enhance config
-        loadEnhanceToggle(fileConfig.enhance || {});
         // Reload prompt with correct language (after language is set)
         await reloadPetPrompt();
     }
@@ -161,14 +156,52 @@ document.getElementById('btn-test-api').addEventListener('click', async () => {
     }
 });
 
+/**
+ * 把"回复间隔 vs 识屏节奏"的关系直接显示在设置页上。
+ *
+ * 这两个数字必须配合：识屏流水线按 `vision.pace` 攒图（normal 档 15 秒唤醒），
+ * 而回复间隔决定了多久去看一次队列。**回复间隔小于唤醒间隔时，大部分 tick
+ * 会因为"还没有新画面"而空转** —— 功能上没错，但用户会以为设置没生效。
+ *
+ * 与其让人猜，不如把它算出来写在旁边。
+ */
+async function renderIntervalHint(fileConfig = null) {
+    const el = document.getElementById('interval-hint');
+    if (!el) return;
+    let cfg = fileConfig;
+    if (!cfg) {
+        try { cfg = await window.electronAPI.loadConfig(); } catch (e) { return; }
+    }
+    const interval = parseInt(document.getElementById('interval').value, 10) || 10;
+    const pace = (cfg.vision && cfg.vision.pace) || 'normal';
+    // 与 screen-observer.js 的 PACES 保持一致
+    const WAKE = { calm: 30, normal: 15, dense: 8, action: 20 };
+    const wake = WAKE[pace] || 15;
+    const visionOff = cfg.vision && cfg.vision.enabled === false;
+
+    if (visionOff) {
+        el.textContent = t('detect.hintNoVision');
+        el.className = 'status warn';
+        return;
+    }
+    if (interval < wake) {
+        el.textContent = t('detect.hintTooFast')
+            .replace('{0}', interval).replace('{1}', wake).replace('{2}', pace);
+        el.className = 'status warn';
+    } else {
+        el.textContent = t('detect.hintOk')
+            .replace('{0}', interval).replace('{1}', wake).replace('{2}', pace);
+        el.className = 'status success';
+    }
+}
+
 document.getElementById('btn-save-interval').addEventListener('click', () => {
     const seconds = parseInt(document.getElementById('interval').value);
     const chatGap = parseInt(document.getElementById('chat-gap').value);
-    const shotInterval = parseInt(document.getElementById('screenshot-interval').value) || 0;
-    if (window.electronAPI) window.electronAPI.saveConfig({ interval: seconds, chatGap, screenshotInterval: shotInterval });
+    if (window.electronAPI) window.electronAPI.saveConfig({ interval: seconds, chatGap });
     petSystem.setInterval(seconds * 1000);
     petSystem.chatGapMs = chatGap * 1000;
-    petSystem.screenshotInterval = shotInterval;
+    renderIntervalHint();
 });
 
 // ========== Start/Stop ==========
@@ -1281,6 +1314,96 @@ document.getElementById('btn-save-companion')?.addEventListener('click', async (
     await loadCompanionSettings();
 });
 
+// ========== 识屏流水线设置（see-now 移植版） ==========
+
+async function loadVisionSettings() {
+    if (!window.electronAPI || !window.electronAPI.visionStatus) return;
+    let cfg = {};
+    try { cfg = (await window.electronAPI.loadConfig()).vision || {}; } catch (e) {}
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+    const check = (id, val) => { const el = document.getElementById(id); if (el) el.checked = !!val; };
+    check('vision-enabled', cfg.enabled !== false);
+    set('vision-quality', cfg.quality || 'low');
+    set('vision-pace', cfg.pace || 'normal');
+    check('vision-scene', cfg.scene === true);
+    await renderVisionStatus();
+}
+
+async function renderVisionStatus() {
+    const line = document.getElementById('vision-status-line');
+    if (!line || !window.electronAPI?.visionStatus) return;
+    try {
+        const st = await window.electronAPI.visionStatus();
+        const stats = st.stats || {};
+        const parts = [
+            st.platformSupported ? null : '⚠️ Linux 未支持',
+            st.running ? `运行中 @${(st.size || []).join('×')}` : '未运行',
+            `${st.frames || 0} 帧已解码`,
+            `${stats.sheets || 0} 张图`,
+            stats.kept ? `留下 ${stats.kept} 帧 (切点 ${stats.cuts || 0} / 采样 ${stats.marks || 0} / 兜底 ${stats.floors || 0})` : null,
+            st.lastError ? `错误: ${st.lastError}` : null,
+        ].filter(Boolean);
+        line.textContent = parts.join(' · ');
+        line.className = st.platformSupported === false ? 'status error' : 'status';
+    } catch (e) {
+        line.textContent = '状态不可用: ' + e.message;
+        line.className = 'status error';
+    }
+}
+
+async function saveVisionSettings() {
+    const msg = document.getElementById('vision-msg');
+    try {
+        await window.electronAPI.saveConfig({
+            vision: {
+                enabled: document.getElementById('vision-enabled').checked,
+                quality: document.getElementById('vision-quality').value,
+                pace: document.getElementById('vision-pace').value,
+                scene: document.getElementById('vision-scene').checked,
+            }
+        });
+        if (msg) { msg.textContent = t('vision.saved'); msg.className = 'status success'; }
+        await renderVisionStatus();
+    } catch (e) {
+        if (msg) { msg.textContent = '保存失败: ' + e.message; msg.className = 'status error'; }
+    }
+}
+
+document.getElementById('btn-save-vision')?.addEventListener('click', saveVisionSettings);
+
+/**
+ * "测试采集"——按钮点下去不能只是"看起来没问题"。
+ *
+ * 真去抓一张图，然后把**实测到的数字**报出来：解了多少帧、变化分多少、
+ * 图多大。这样用户一眼就知道 ffmpeg 在不在、屏幕能不能读、整条链通没通，
+ * 不用等桌宠"不说话"再去猜。
+ */
+document.getElementById('btn-test-vision')?.addEventListener('click', async () => {
+    const msg = document.getElementById('vision-msg');
+    if (!msg) return;
+    msg.textContent = t('vision.testing') || '抓取中…';
+    msg.className = 'status';
+    try {
+        const t0 = Date.now();
+        const res = await window.electronAPI.visionGrab({ seconds: 8, minFrames: 1 });
+        const ms = Date.now() - t0;
+        if (res && res.ok && res.payload) {
+            const p = res.payload;
+            msg.textContent = `✓ ${p.width}×${p.height}，${p.frames.length} 帧，`
+                + `${Math.round(p.bytes / 1024)}KB，耗时 ${ms}ms`
+                + (p.frames.length ? `（${p.frames.map(f => f.t.toFixed(1) + 's').join(', ')}）` : '');
+            msg.className = 'status success';
+        } else {
+            msg.textContent = `✗ 没抓到图：${(res && (res.error || res.reason)) || 'unknown'}`;
+            msg.className = 'status error';
+        }
+        await renderVisionStatus();
+    } catch (e) {
+        msg.textContent = '✗ ' + e.message;
+        msg.className = 'status error';
+    }
+});
+
 // ========== 哔哩哔哩直播间弹幕设置 ==========
 
 async function loadBiliSettings() {
@@ -1696,16 +1819,14 @@ document.querySelectorAll('.token-mult-btn').forEach(btn => {
     });
 });
 
-// ========== Enhance Master Toggle ==========
-
-function loadEnhanceToggle(enhance) {
-    document.getElementById('enhance-enabled').checked = enhance.enabled || false;
-}
-
-document.getElementById('enhance-enabled').addEventListener('change', async () => {
-    const enabled = document.getElementById('enhance-enabled').checked;
-    await window.electronAPI.saveConfig({ enhance: { enabled } });
-});
+// ========== 增强层总开关（已移除） ==========
+//
+// 原先这里有一个「启用增强」总开关，绑定 `enhance.enabled`。
+// 增强层已被 see-now 识屏流水线取代并整体删除（含 config 里的 enhance 配置块），
+// 所以这个开关连配置项都不存在了，只留下历史说明，避免以后有人去找它。
+//
+// 画面相关的开关现在在「设置 → Screen Pipeline (see-now)」卡片里，
+// 长期记忆则在 enhance-data.json（`saveEnhanceData` / `loadEnhanceData`，仍在用）。
 
 // ========== 酒馆预设管理 ==========
 const BUILTIN_PRESETS = ['fantasy-tavern', 'cyber-bar', 'xianxia-tavern'];
@@ -2161,6 +2282,7 @@ if (navigator.mediaDevices?.enumerateDevices) {
 if (window.electronAPI) {
     loadDshSettings();
     loadCompanionSettings();
+    loadVisionSettings();
     loadBiliSettings();
     loadObsMode();
     loadObsBrowserSource();

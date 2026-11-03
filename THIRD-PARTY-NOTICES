@@ -6,7 +6,25 @@ each component's license terms independently.
 
 BUNDLED COMPONENTS
 
-(none for speech recognition — see below)
+dsh-see-now — screen-visual pipeline (code adapted into this project)
+  - Source: https://github.com/SAOS-3624/dsh-see-now
+  - License: Apache License 2.0
+  - Copyright © 2026 SAOS-3624
+  - What was taken: the frame-selection and contact-sheet pipeline under
+    src/core/vision/ (cuts / tiers / pack / scale / sheet / png / pipeline /
+    capture) is a port of dsh-see-now, converted from ES modules to CommonJS
+    and adapted to run inside an Electron main process instead of a DSH plugin.
+    Changes: CJS packaging, an Electron-hosted session manager
+    (src/core/screen-observer.js), ffmpeg path resolution for the packaged app,
+    removal of the DSH-only floating window / chat-interjection layers, and a
+    Promise-based `watch` in place of the blocking tool call.
+  - Apache-2.0 requires preserving copyright and license notices. The full
+    license text is reproduced in src/core/vision/LICENSE-dsh-see-now
+    (which corresponds to the upstream NOTICE/attribution requirements).
+  - Credit: The "score every frame by how much the picture changed, keep only
+    the ones that matter, pack them into one image" design — including the
+    HSV-weighted change score, the cut/integral dual criteria, the tier system,
+    and the DP bin-packing — is by SAOS-3624.
 
 DOWNLOADED AT RUNTIME, ON THE USER'S REQUEST
 

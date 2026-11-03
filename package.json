@@ -1,16 +1,20 @@
 {
   "name": "live2dpet",
-  "version": "1.6.8",
+  "version": "1.7.2",
   "description": "AI desktop pet companion with multi-backend TTS, dual mode, enhanced memory",
   "author": "x380kkm",
   "main": "main.js",
   "scripts": {
     "start": "node launch.js",
     "dev": "node launch.js --dev",
-    "test": "node --test tests/test-core.js tests/test-enhance.js tests/test-config-manager.js tests/test-crypto-utils.js tests/test-validators.js tests/test-dsh-bridge.js tests/test-game-companion.js tests/test-bilibili-danmaku.js tests/test-live-companion.js tests/test-danmaku-reply-flow.js tests/test-obs-mode.js tests/test-obs-server.js tests/test-obs-browser-source.js tests/test-ipc-channels.js tests/test-zip-extract.js tests/test-asr-model.js tests/test-asr-native.js tests/test-asr-session.js tests/test-pcm-util.js tests/test-offline-asr-capture.js",
+    "test": "node --test tests/test-core.js tests/test-config-manager.js tests/test-crypto-utils.js tests/test-validators.js tests/test-dsh-bridge.js tests/test-game-companion.js tests/test-bilibili-danmaku.js tests/test-live-companion.js tests/test-danmaku-reply-flow.js tests/test-obs-mode.js tests/test-obs-server.js tests/test-obs-browser-source.js tests/test-ipc-channels.js tests/test-zip-extract.js tests/test-asr-model.js tests/test-asr-native.js tests/test-asr-session.js tests/test-pcm-util.js tests/test-offline-asr-capture.js tests/test-vision.js tests/test-tick-gating.js",
+    "verify:vision": "node scripts/vision-smoke.js",
     "build": "electron-builder --win portable",
     "build:dir": "electron-builder --win dir",
-    "verify:asr": "electron verify-asr-offline.js"
+    "verify:asr": "electron verify-asr-offline.js",
+    "verify:main": "electron scripts/smoke-main.js",
+    "verify:vision-electron": "electron scripts/verify-vision-electron.js",
+    "verify:tts": "node scripts/probe-tts.js"
   },
   "dependencies": {
     "active-win": "^8.2.1",
@@ -20,7 +24,7 @@
     "ws": "^8.21.1"
   },
   "devDependencies": {
-    "electron": "^42.4.0",
+    "electron": "^45.2.1",
     "electron-builder": "^26.15.3"
   },
   "overrides": {
@@ -48,7 +52,10 @@
       "libs/**/*",
       "pet-chat-window.html",
       "使用说明.md",
-      "presets/**/*"
+      "presets/**/*",
+      "LICENSE",
+      "THIRD-PARTY-NOTICES",
+      "SPONSORS.md"
     ],
     "asarUnpack": [
       "node_modules/koffi/**"

@@ -1,17 +1,40 @@
 /**
- * EnhanceIPC — Enhancement data persistence and web search.
- * Extracted from main.js lines 1157-1273.
+ * MemoryIPC — 记忆数据（enhance-data.json）的读写通道。
+ *
+ * ## 为什么这个文件还叫 "enhance"
+ *
+ * 这段代码原本属于"增强层"（enhance/*），提供两件事：记忆持久化 + 网络搜索。
+ * 增强层已经被 see-now 识屏流水线取代并整体删除（见 CHANGELOG），
+ * 但**记忆持久化这一半和视觉无关** —— `conversation-store.js` 用它保存
+ * 对话历史、阶段总结、话题与偏好，是仍然在用的核心功能。
+ *
+ * 只有 `web-search` 是纯增强层的（搜索服务的唯一调用方已被删除），一并移除。
+ *
+ * ## 为什么文件名保持 enhance-ipc.js
+ *
+ * `enhance-data.json` 这个名字是**磁盘上的既有格式**，用户数据文件已经这么叫了；
+ * 同时这个名字也仍然出现在 preload 的两个方法名里（saveEnhanceData/loadEnhanceData），
+ * 那些是渲染进程的 API 表面。改文件名会诱使人顺手改掉磁盘格式与 API，
+ * 那会静默丢掉所有用户的长期记忆。所以：**文件名和通道名都不动，只删搜索**。
+ */
+'use strict';
+
+/**
+ * @param {object} ctx AppContext
+ * @param {object} ipcMain Electron ipcMain
+ * @param {{app:object, fs:object}} deps
  */
 function registerEnhanceIPC(ctx, ipcMain, deps) {
-    // deps: { app, fs, https, http }
-    const { app, fs, https, http } = deps;
+    const { app, fs } = deps;
+    const path = require('path');
 
     const enhanceDataPath = app.isPackaged
-        ? require('path').join(app.getPath('userData'), 'enhance-data.json')
-        : require('path').join(app.getAppPath(), 'enhance-data.json');
+        ? path.join(app.getPath('userData'), 'enhance-data.json')
+        : path.join(app.getAppPath(), 'enhance-data.json');
 
     ipcMain.handle('save-enhance-data', async (event, data) => {
         try {
+            // 覆盖写：ConversationStore 每次保存都会送完整的记忆快照
             fs.writeFileSync(enhanceDataPath, JSON.stringify(data, null, 2), 'utf-8');
             return { success: true };
         } catch (e) {
@@ -26,94 +49,9 @@ function registerEnhanceIPC(ctx, ipcMain, deps) {
             }
             return { success: true, data: {} };
         } catch (e) {
+            // 文件损坏时返回空对象而不是抛错：宁可让宠物"忘掉过去"，
+            // 也不要因为一个坏文件导致整个应用起不来。
             return { success: true, data: {} };
-        }
-    });
-
-    function httpGet(url, timeout = 10000, extraHeaders = {}) {
-        return new Promise((resolve, reject) => {
-            const mod = url.startsWith('https') ? https : http;
-            const req = mod.get(url, { timeout, headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', ...extraHeaders } }, (res) => {
-                let data = '';
-                res.on('data', chunk => data += chunk);
-                res.on('end', () => resolve({ status: res.statusCode, data }));
-            });
-            req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
-            req.on('error', reject);
-        });
-    }
-
-    function parseDDGResults(html) {
-        const results = [];
-        const regex = /class="result__snippet"[^>]*>([\s\S]*?)<\//gi;
-        let match;
-        while ((match = regex.exec(html)) !== null && results.length < 3) {
-            const text = match[1].replace(/<[^>]+>/g, '').trim();
-            if (text.length > 10) results.push(text);
-        }
-        if (results.length > 0) return results.join(' | ');
-        const pRegex = /<a[^>]*class="result__a"[^>]*>([\s\S]*?)<\/a>/gi;
-        while ((match = pRegex.exec(html)) !== null && results.length < 3) {
-            const text = match[1].replace(/<[^>]+>/g, '').trim();
-            if (text.length > 5) results.push(text);
-        }
-        return results.length > 0 ? results.join(' | ') : null;
-    }
-
-    ipcMain.handle('web-search', async (event, query, provider, options = {}) => {
-        try {
-            query = query.replace(/[A-Za-z0-9_-]{20,}/g, '').trim();
-            if (!query) return { success: false, error: 'empty_query' };
-
-            if (provider === 'custom' && options.customUrl) {
-                const url = new URL(options.customUrl);
-                url.searchParams.set('q', query);
-                const headers = { 'User-Agent': 'Live2DPet/1.8.0' };
-                if (options.customApiKey) headers['Authorization'] = `Bearer ${options.customApiKey}`;
-                if (options.customHeaders) Object.assign(headers, options.customHeaders);
-                const mod = url.protocol === 'https:' ? https : http;
-                const result = await new Promise((resolve, reject) => {
-                    const req = mod.get(url.toString(), { timeout: 10000, headers }, (res) => {
-                        let data = '';
-                        res.on('data', chunk => data += chunk);
-                        res.on('end', () => resolve({ status: res.statusCode, data }));
-                    });
-                    req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
-                    req.on('error', reject);
-                });
-                if (result.status !== 200) return { success: false, error: `HTTP ${result.status}` };
-                try {
-                    const json = JSON.parse(result.data);
-                    const snippets = (json.webPages?.value || json.results || [])
-                        .slice(0, 3)
-                        .map(p => p.snippet || p.content || p.description || p.name || '')
-                        .filter(s => s.length > 10);
-                    if (snippets.length > 0) return { success: true, results: snippets.join(' | ') };
-                    const fallback = json.abstract || JSON.stringify(json).slice(0, 300);
-                    return { success: true, results: fallback };
-                } catch {
-                    return { success: true, results: result.data.slice(0, 300) };
-                }
-            }
-
-            if (provider === 'duckduckgo') {
-                const encodedQuery = encodeURIComponent(query);
-                const url = `https://html.duckduckgo.com/html/?q=${encodedQuery}`;
-                const result = await httpGet(url);
-                if (result.status !== 200) return { success: false, error: `HTTP ${result.status}` };
-                const parsed = parseDDGResults(result.data);
-                if (!parsed) {
-                    console.log(`[Enhance:Search] Parse failed for duckduckgo, query: ${query}`);
-                    return { success: false, error: 'parse_failed' };
-                }
-                console.log(`[Enhance:Search] duckduckgo success for: ${query}`);
-                return { success: true, results: parsed };
-            }
-
-            return { success: false, error: 'unknown_provider' };
-        } catch (e) {
-            console.error(`[Enhance:Search] Error:`, e.message);
-            return { success: false, error: e.message };
         }
     });
 }

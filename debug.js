@@ -2,16 +2,17 @@
 // Debug launcher: spawns Live2DPet.exe with --enable-logging
 // Usage:
 //   node debug.js                  — show all logs (filter DXGI noise)
-//   node debug.js enhance          — only show [Enhance:*] logs
+//   node debug.js vision           — only show [Vision] / [CompanionVoice] / [Danmaku] logs
 //   node debug.js prompt           — only show [Prompt*] / [AIChatClient] logs
-//   node debug.js enhance,prompt   — combine multiple filters
+//   node debug.js vision,prompt    — combine multiple filters
 const { spawn } = require('child_process');
 const path = require('path');
 
 const NOISE = ['dxgi_', 'DxgiDuplicatorController'];
 
 const FILTERS = {
-    enhance: ['[Enhance:', '[VLM', '[ContextPool', '[Knowledge', '[Memory', '[Search'],
+    // 识屏流水线 + 陪伴/弹幕（原来的 enhance 过滤器已随增强层删除）
+    vision:  ['[Vision]', '[Companion]', '[CompanionVoice]', '[Danmaku]', '[OfflineAsr]', '[ASR]'],
     prompt:  ['[PromptBuilder', '[AIChatClient', '[DesktopPetSystem] Enhanced context'],
     tts:     ['[TTS', '[Translation', 'voicevox', 'VOICEVOX'],
     emotion: ['[Emotion', 'setExpression', 'playMotion'],

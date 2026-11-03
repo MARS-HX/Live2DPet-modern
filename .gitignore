@@ -13,3 +13,10 @@ build.bat
 # config.example.json is the shareable template; copy it to config.json.
 config.json
 enhance-data.json
+
+# 识屏冒烟/端到端跑出来的样张，别提交
+.vision-smoke/
+.vision-e2e/
+
+# npm 本地配置（retry 参数等）
+.npmrc

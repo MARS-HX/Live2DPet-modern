@@ -132,6 +132,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onAsrResult: (cb) => ipcRenderer.on('asr://result', (e, text) => cb(text)),
     onAsrInstallProgress: (cb) => ipcRenderer.on('asr://install-progress', (e, info) => cb(info)),
 
+    // ========== 识屏流水线（变化分筛选 + 多帧拼图） ==========
+    // 采集与流水线在主进程（ffmpeg 子进程 + 帧缓冲 + PNG 编码），
+    // 渲染进程只做"要不要看一眼"的决策，拿回的是拼好的 sheet（data URL）。
+    visionStatus: () => ipcRenderer.invoke('vision-status'),
+    visionStart: (patch) => ipcRenderer.invoke('vision-start', patch),
+    visionGrab: (options) => ipcRenderer.invoke('vision-grab', options),
+    visionPeek: () => ipcRenderer.invoke('vision-peek'),
+    visionStop: (opts) => ipcRenderer.invoke('vision-stop', opts),
+    visionConfig: (patch) => ipcRenderer.invoke('vision-config', patch),
+    visionWatchStart: (options) => ipcRenderer.invoke('vision-watch-start', options),
+    visionWatchStop: () => ipcRenderer.invoke('vision-watch-stop'),
+    onVisionSheet: (cb) => ipcRenderer.on('vision://sheet', (e, data) => cb(data)),
+
     // Event listeners (原有)
     onCharacterUpdate: (cb) => ipcRenderer.on('character-update', (e, data) => cb(data)),
     onPetWindowClosed: (cb) => ipcRenderer.on('pet-window-closed', () => cb()),
@@ -149,10 +162,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // External links
     openExternal: (url) => ipcRenderer.invoke('open-external', url),
 
-    // Enhance system
+    // 记忆数据（长期记忆 / 阶段总结 / 用户偏好）
+    // 名字带 Enhance 是历史原因（原本属于已删除的增强层），
+    // 但它是当前仍在用的存储通道 —— 见 src/main/enhance-ipc.js 的说明。
     saveEnhanceData: (data) => ipcRenderer.invoke('save-enhance-data', data),
     loadEnhanceData: () => ipcRenderer.invoke('load-enhance-data'),
-    webSearch: (query, provider, options) => ipcRenderer.invoke('web-search', query, provider, options),
 
     // Renderer log forwarding (avoids needing --enable-logging)
     rendererLog: (level, args) => ipcRenderer.send('renderer-log', level, args)

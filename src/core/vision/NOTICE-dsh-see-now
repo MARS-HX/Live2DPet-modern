@@ -1,0 +1,54 @@
+# NOTICE
+
+Copyright 2026 SAOS-3624
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+## What this project does NOT do
+
+The Apache-2.0 grant above covers **the source code of this project**, and nothing else.
+On top of that, the project deliberately stays out of several areas:
+
+- **It does not upload your screen anywhere.** Frames are captured locally, scored locally,
+  packed locally, and handed to the model only as an attachment you asked for.
+  There is no analytics endpoint, no telemetry, no remote copy of the picture.
+- **It does not record continuously.** Frames are scored as they arrive and most are thrown
+  away before anything is encoded; only the ones that pass the cut/floor test reach the sheet.
+- **No capture driver is bundled.** `ddagrab` / `gdigrab` / your camera device come from the
+  `ffmpeg` build you installed. What you are allowed to capture is governed by your OS and by
+  whatever is on screen — not by this package.
+- **No TTS engine is bundled.** Speech goes through the host's voice adapter or whatever
+  `edge-tts` / system engine you installed.
+- **You are responsible for what you point it at.** Pointing it at a call, a DRM-protected
+  player or someone else's private screen is your call and your responsibility.
+
+## Third-party components
+
+Nothing third-party is vendored into this repository. At runtime the package *uses*, but does
+not redistribute:
+
+| Component | How it is used | Licence |
+|---|---|---|
+| `ffmpeg` / `ffprobe` | external binaries on your `PATH` (capture, decode, encode) | LGPL/GPL (your build) |
+| Python + tkinter | only for the optional floating window | PSF |
+| `mss` / `numpy` / `Pillow` | optional Python deps of the floating window | MIT / BSD / HPND |
+| `dsh-watch-together` | source of `examples/floating-chat/` (same author, same licence) | Apache-2.0 |
+
+`examples/floating-chat/` is generated from the sibling project `dsh-watch-together` and is
+distributed under the same Apache-2.0 terms as the rest of this package — there is no longer a
+separate licence carve-out for that directory.
+
+## Documentation media
+
+Screenshots shipped with the package were taken by the author on his own machine. No third-party
+footage, model weights or binaries are redistributed in this repository.

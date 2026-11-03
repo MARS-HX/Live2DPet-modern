@@ -24,16 +24,28 @@ describe('getDefaultConfig', () => {
         const config = getDefaultConfig();
         for (const key of ['apiKey', 'baseURL', 'modelName', 'interval',
             'chatGap', 'emotionFrequency', 'enabledEmotions',
-            'maxTokensMultiplier', 'model', 'bubble', 'enhance']) {
+            'maxTokensMultiplier', 'model', 'bubble', 'vision']) {
             assert.ok(key in config, `missing field: ${key}`);
         }
     });
 
-    it('has complete enhance sub-sections', () => {
+    it('no longer ships the removed enhance section', () => {
+        // 增强层（enhance/*）已被 see-now 识屏流水线取代并整体删除。
+        // 这个断言是防止有人从旧版本把配置块抄回来 —— 那会诱使把已删除的
+        // 模块也一并恢复，让两套"看屏幕"的实现同时存在。
         const config = getDefaultConfig();
-        for (const s of ['memory', 'search', 'knowledge', 'vlm', 'knowledgeAcq']) {
-            assert.ok(s in config.enhance, `missing enhance.${s}`);
-        }
+        assert.ok(!('enhance' in config), 'enhance must not come back');
+    });
+
+    it('includes the vision pipeline defaults', () => {
+        const v = getDefaultConfig().vision;
+        assert.ok(v, 'missing vision section');
+        assert.strictEqual(v.enabled, true);
+        assert.strictEqual(v.quality, 'low');
+        assert.strictEqual(v.pace, 'normal');
+        assert.strictEqual(v.scene, false);
+        assert.ok(v.fps > 0);
+        assert.ok(v.graceSec >= 0);
     });
 
     it('includes the DSH bridge defaults', () => {
@@ -183,12 +195,13 @@ describe('createConfigManager (async)', () => {
         assert.deepStrictEqual(saved.tts.vvmFiles, ['0.vvm']);
     });
 
-    it('saveConfigFile deep-merges enhance sub-sections', async () => {
-        cm = createConfigManager(mockApp, mockOpts({ [cfgPath(BASE)]: JSON.stringify({ enhance: { memory: { enabled: true, retentionDays: 30 } } }) }));
-        await cm.saveConfigFile({ enhance: { memory: { retentionDays: 7 } } });
+    it('saveConfigFile deep-merges the vision section', async () => {
+        cm = createConfigManager(mockApp, mockOpts({ [cfgPath(BASE)]: JSON.stringify({ vision: { quality: 'low', pace: 'calm', scene: false } }) }));
+        await cm.saveConfigFile({ vision: { quality: 'high' } });
         const saved = JSON.parse(files[cfgPath(BASE)]);
-        assert.strictEqual(saved.enhance.memory.retentionDays, 7);
-        assert.strictEqual(saved.enhance.memory.enabled, true);
+        assert.strictEqual(saved.vision.quality, 'high');
+        assert.strictEqual(saved.vision.pace, 'calm', 'untouched keys survive the merge');
+        assert.strictEqual(saved.vision.scene, false);
     });
 
     it('saveConfigFile deep-merges the dsh section', async () => {

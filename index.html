@@ -239,14 +239,15 @@
         <p id="token-info" style="font-size:12px;color:#888;"></p>
     </div>
     <div class="card">
-        <h2 data-i18n="detect.title">Detection Settings</h2>
-        <label data-i18n="detect.interval">AI Detection Interval (sec)</label>
+        <h2 data-i18n="detect.title">Reply Frequency</h2>
+        <p class="model-info" data-i18n="detect.desc">The pet only speaks when the screen actually changed. This is how often it is <b>allowed</b> to check — not a forced timer. A still screen stays quiet instead of burning tokens on the same picture.</p>
+        <label data-i18n="detect.interval">Reply interval (sec)</label>
         <input type="number" id="interval" value="30" min="10" max="300">
+        <p class="model-info" style="font-size:11px;color:#888;margin-top:-2px;" data-i18n="detect.intervalHint">Keep this at or above the screen pipeline's wake interval, otherwise checks simply run out of new frames and do nothing.</p>
         <label data-i18n="detect.chatGap">Chat Gap (sec)</label>
         <input type="number" id="chat-gap" value="5" min="0" max="60">
-        <label data-i18n="detect.screenshotInterval">Screenshot Interval (sec)</label>
-        <input type="number" id="screenshot-interval" value="60" min="0" max="600" style="margin-bottom:4px;">
-        <button class="btn btn-primary" id="btn-save-interval" data-i18n="btn.save">保存</button>
+        <button class="btn btn-primary" id="btn-save-interval" data-i18n="btn.save">Save</button>
+        <div class="status" id="interval-hint"></div>
     </div>
     <div class="card">
         <h2 data-i18n="audio.title">音频设备</h2>
@@ -263,11 +264,37 @@
         <div class="status" id="audio-status"></div>
     </div>
     <div class="card">
+        <h2 data-i18n="vision.title">Screen Pipeline (see-now)</h2>
+        <p class="model-info" data-i18n="vision.desc">Instead of截图 on a timer, this scores every frame by how much the picture changed and only keeps the ones that matter — then packs them into ONE image. A static screen costs almost nothing; a busy one still shows the model several moments at once.</p>
+        <div class="status" id="vision-status-line"></div>
         <label style="display:inline-flex;align-items:center;gap:6px;">
-            <input type="checkbox" id="enhance-enabled">
-            <span data-i18n="enhance.master">Enable Enhancement</span>
+            <input type="checkbox" id="vision-enabled">
+            <span data-i18n="vision.enabled">Use the change-scoring screen pipeline</span>
         </label>
-        <p style="font-size:11px;color:#888;margin-top:4px;" data-i18n="enhance.masterHint">Enables keyframe visual memory — AI sees representative screenshots from recent activity (uses extra API tokens)</p>
+        <label data-i18n="vision.quality">Detail level</label>
+        <select id="vision-quality">
+            <option value="low">Low — 800×450</option>
+            <option value="standard">Standard — 1066×600</option>
+            <option value="high">High — 1280×720</option>
+            <option value="ultra">Ultra — 1600×900</option>
+        </select>
+        <label data-i18n="vision.pace">Pace</label>
+        <select id="vision-pace">
+            <option value="calm">Calm — 20 / 30s (省 token)</option>
+            <option value="normal">Normal — 12 / 15s</option>
+            <option value="dense">Dense — 7 / 8s (敏感，贵)</option>
+            <option value="action">Action — 80 / 20s (全屏游戏)</option>
+        </select>
+        <label style="display:inline-flex;align-items:center;gap:6px;">
+            <input type="checkbox" id="vision-scene">
+            <span data-i18n="vision.scene">Scene mode — one full-frame image per scene change</span>
+        </label>
+        <div class="btn-row">
+            <button class="btn btn-primary" id="btn-save-vision" data-i18n="vision.save">Save pipeline settings</button>
+            <button class="btn btn-secondary" id="btn-test-vision" data-i18n="vision.test">Test capture</button>
+        </div>
+        <div class="status" id="vision-msg"></div>
+        <p class="model-info" style="font-size:11px;color:#888;" data-i18n="vision.hint">Requires ffmpeg. Press "Test capture" once — it grabs one frame and reports what it measured, so you know the whole chain works before the pet relies on it.</p>
     </div>
     <div class="card">
         <div class="btn-row">
@@ -801,19 +828,13 @@
     <script src="src/core/emotion-system.js"></script>
     <script src="src/core/audio-state-machine.js"></script>
     <script src="src/core/message-session.js"></script>
-    <script src="src/core/enhance/context-pool.js"></script>
-    <script src="src/core/enhance/enhance-utils.js"></script>
-    <script src="src/core/enhance/memory-tracker.js"></script>
-    <script src="src/core/enhance/search-service.js"></script>
-    <script src="src/core/enhance/knowledge-store.js"></script>
-    <script src="src/core/enhance/vlm-extractor.js"></script>
-    <script src="src/core/enhance/knowledge-acquisition.js"></script>
-    <script src="src/core/enhance/enhancement-orchestrator.js"></script>
     <script src="src/core/game-companion.js"></script>
     <script src="src/core/live-companion.js"></script>
     <!-- 离线语音识别：PCM 转换在前，采集封装依赖它 -->
     <script src="src/core/pcm-util.js"></script>
     <script src="src/renderer/offline-asr.js"></script>
+    <!-- 识屏流水线客户端：DesktopPetSystem 依赖它 -->
+    <script src="src/renderer/vision-client.js"></script>
     <script src="src/core/desktop-pet-system.js"></script>
     <script src="src/renderer/settings-ui.js"></script>
 </body>

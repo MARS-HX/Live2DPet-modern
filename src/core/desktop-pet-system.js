@@ -36,9 +36,11 @@ class DesktopPetSystem {
         this.isPlayingMessage = false; // lock: currently playing a session
         this.chatGapMs = 5000;        // minimum gap between two message sessions
 
-        // Enhancement orchestrator
-        this.enhancer = null;
-        this._showLayout = false; // desktop layout in prompt, default off
+        // Desktop layout in prompt, default off
+        this._showLayout = false;
+
+        // 识屏流水线客户端（see-now 移植版）：按变化量挑帧、多帧拼一张图
+        this.visionClient = null;
 
         // Game companion + hands-free voice input
         this.gameCompanion = null;
@@ -53,8 +55,7 @@ class DesktopPetSystem {
         this._autoStarting = false;
         this._suppressAutoStart = false;
 
-        // 截图频率控制
-        this.screenshotInterval = 0;  // 0=跟随检测间隔
+        // 上次真正带上画面说话的时刻（诊断与去重用；不再用于节流）
         this.lastScreenshotTime = 0;
 
         // Hit interaction buffer
@@ -78,13 +79,9 @@ class DesktopPetSystem {
         this.audioStateMachine = new AudioStateMachine();
         await this._initAudioState();
 
-        // 读取截图频率配置
+        // 读配置（游戏陪伴 / 直播弹幕等）
         try {
             const config = await window.electronAPI.loadConfig();
-            if (config.screenshotInterval !== undefined) {
-                this.screenshotInterval = config.screenshotInterval;
-                console.log('[DesktopPetSystem] Screenshot interval:', this.screenshotInterval, 's');
-            }
             // 游戏陪伴：让宠物在用户玩游戏时陪伴吐槽
             if (typeof GameCompanion !== 'undefined') {
                 const comp = config.companion || {};
@@ -126,15 +123,21 @@ class DesktopPetSystem {
             });
         }
 
-        // Enhancement orchestrator (only if master toggle enabled)
-        if (typeof EnhancementOrchestrator !== 'undefined') {
+        // 识屏流水线（变化分筛选 + 多帧拼图）。配置关掉时自动退回旧的单张截图。
+        if (typeof VisionClient !== 'undefined' && window.electronAPI?.visionGrab) {
             try {
                 const config = await window.electronAPI.loadConfig();
-                if (config.enhance?.enabled) {
-                    this.enhancer = new EnhancementOrchestrator(this.aiClient);
-                    await this.enhancer.init();
-                }
-            } catch {}
+                const vc = config.vision || {};
+                this.visionClient = new VisionClient.createVisionClient({ electronAPI: window.electronAPI });
+                await this.visionClient.refreshSettings();
+                const st = this.visionClient.getStatus();
+                console.log('[DesktopPetSystem] Vision pipeline:',
+                    vc.enabled === false ? 'off' : 'on',
+                    '| quality:', (st && st.settings && st.settings.quality) || vc.quality || 'low',
+                    '| pace:', (st && st.settings && st.settings.pace) || vc.pace || 'normal');
+            } catch (e) {
+                console.log('[DesktopPetSystem] Vision client unavailable:', e.message);
+            }
         }
 
         // Listen for hit events from pet window
@@ -153,13 +156,12 @@ class DesktopPetSystem {
             const mode = config.tts?.audioMode || 'tts';
             this.audioStateMachine.setPreferredMode(mode);
         } catch (e) {}
-        // Check TTS availability
-        if (window.electronAPI.ttsGetStatus) {
-            try {
-                const status = await window.electronAPI.ttsGetStatus();
-                this.audioStateMachine.setTTSAvailable(status.initialized && !status.degraded && status.configured);
-            } catch (e) {}
-        }
+        // Check TTS availability.
+        //
+        // **必须带重试**：见 `_refreshTTSAvailability` 的说明 —— main.js 用
+        // setImmediate 初始化 TTS，设置页可能抢在它前面来问。这里多试几次，
+        // 后端一就绪就立刻把 effectiveMode 从 silent 拉回 tts。
+        await this._refreshTTSAvailability({ retries: 10, delayMs: 300 });
         // Load default audio clips
         if (window.electronAPI.loadDefaultAudio) {
             try {
@@ -175,6 +177,70 @@ class DesktopPetSystem {
             } catch (e) {}
         }
         console.log('[DesktopPetSystem] Audio mode:', this.audioStateMachine.effectiveMode);
+    }
+
+    /**
+     * 查一次 TTS 是否可用，并写进音频状态机。
+     *
+     * ## 为什么需要"复查"而不是查一次了事
+     *
+     * `main.js` 里 TTS 是在 `app.whenReady()` 之后用 `setImmediate` 初始化的：
+     *
+     *     setImmediate(async () => { ctx.ttsService.init(options) })
+     *
+     * 而本类的 `init()`（设置页加载时跑）**不受这个顺序约束**。设置页如果渲染得
+     * 快，就会在 `ttsService.init()` 之前来问 `tts:status`，那一刻拿到的是
+     * `initialized: false` —— 于是状态机把 TTS 判成不可用，`_recompute()` 把
+     * 有效模式降到 `silent`，然后**再也没有人复查过**。
+     *
+     * 用户看到的现象就是"宠物突然不说话"，而 TTS 配置、API Key、网络全都是好的。
+     * 因为这不是配置问题，是一次启动竞态，只是它每次的胜负取决于机器快慢。
+     *
+     * 所以这里改成：查到不可用就**安排几次重试**，一旦后端就绪立刻恢复发声。
+     * 重试间隔递增、总时长有限，不会一直空转。
+     *
+     * @param {{retries?:number, delayMs?:number}} o
+     * @returns {Promise<boolean>} 这次查到的可用性
+     */
+    async _refreshTTSAvailability({ retries = 0, delayMs = 400 } = {}) {
+        if (!window.electronAPI?.ttsGetStatus) return false;
+        let available = false;
+        try {
+            const status = await window.electronAPI.ttsGetStatus();
+            available = !!(status.initialized && !status.degraded && status.configured);
+            this.audioStateMachine.setTTSAvailable(available);
+            if (!available) {
+                // 把判定依据打出来 —— 否则"没声音"这件事在日志里完全没有痕迹
+                console.log('[DesktopPetSystem] TTS not ready:',
+                    `initialized=${status.initialized}`,
+                    `degraded=${status.degraded}`,
+                    `configured=${status.configured}`,
+                    `service=${status.serviceType || '?'}`);
+            }
+        } catch (e) {
+            console.log('[DesktopPetSystem] tts-status failed:', e.message);
+        }
+
+        if (!available && retries > 0) {
+            if (this._ttsRetryTimer) clearTimeout(this._ttsRetryTimer);
+            this._ttsRetryTimer = setTimeout(() => {
+                this._ttsRetryTimer = null;
+                this._refreshTTSAvailability({ retries: retries - 1, delayMs: Math.min(delayMs * 2, 4000) })
+                    .catch(() => {});
+            }, delayMs);
+        } else if (available) {
+            console.log('[DesktopPetSystem] TTS ready, audio mode:',
+                this.audioStateMachine.effectiveMode);
+        }
+        return available;
+    }
+
+    /** 停掉进行中的 TTS 复查轮询（停宠物时调用）。 */
+    _stopTTSRetry() {
+        if (this._ttsRetryTimer) {
+            clearTimeout(this._ttsRetryTimer);
+            this._ttsRetryTimer = null;
+        }
     }
 
     async start() {
@@ -193,10 +259,37 @@ class DesktopPetSystem {
                 this.startDetection();
                 this.startFocusTimer();
                 this.emotionSystem.start();
-                console.log('[DesktopPetSystem] Started');
+                // 后台开始攒图（按变化量筛帧）。这样 tick 到的时候队列里已经有货，
+                // 不必在 tick 里阻塞等待 —— 见 sendRequest 里那段注释。
+                this._startVisionWatcher();
+                // 启动时再复查一次 TTS：从初始化到用户点"开始"之间，
+                // 后端的 setImmediate 基本已经跑完，这一刻的结论才是可信的。
+                await this._refreshTTSAvailability({ retries: 6, delayMs: 500 });
+                console.log('[DesktopPetSystem] Started, audio:', this.audioStateMachine.effectiveMode);
             }
         } catch (error) {
             console.error('[DesktopPetSystem] Failed to start:', error);
+        }
+    }
+
+    /** 起/停后台识屏（幂等，失败不影响主流程） */
+    async _startVisionWatcher() {
+        if (!this.visionClient) return;
+        try {
+            const r = await this.visionClient.startWatcher();
+            if (r && r.success) console.log('[DesktopPetSystem] Vision watcher on:', r.intervalSec + 's');
+            else if (r && r.error) console.log('[DesktopPetSystem] Vision watcher skipped:', r.error);
+        } catch (e) {
+            console.log('[DesktopPetSystem] Vision watcher failed:', e.message);
+        }
+    }
+
+    async _stopVisionWatcher({ stopCapture = true } = {}) {
+        if (!this.visionClient) return;
+        try { await this.visionClient.stopWatcher(); } catch (e) {}
+        if (stopCapture) {
+            // suppress=true：用户主动停了桌宠，别让后台再自己把采集拉起来
+            try { await this.visionClient.stop(); } catch (e) {}
         }
     }
 
@@ -210,7 +303,8 @@ class DesktopPetSystem {
         this.stopCurrentAudio();
         this._stopCompanionVoice();
         this.emotionSystem.stop();
-        if (this.enhancer) await this.enhancer.stop();
+        await this._stopVisionWatcher();
+        this._stopTTSRetry();
         try {
             await window.electronAPI.closePetWindow();
         } catch (e) {}
@@ -267,7 +361,6 @@ class DesktopPetSystem {
             const windowKey = result.data.title || result.data.owner.name;
             if (!this.focusTracker[windowKey]) this.focusTracker[windowKey] = 0;
             this.focusTracker[windowKey] += 1;
-            if (this.enhancer) this.enhancer.onFocusTick(windowKey);
             this._companionTick({
                 title: result.data.title || '',
                 process: result.data.owner.name || ''
@@ -313,6 +406,43 @@ class DesktopPetSystem {
     }
 
     /**
+     * Grab visual context for the companion.
+     *
+     * 优先走识屏流水线：游戏画面每帧都在变，切点判据在 `action` 档里被调得很钝
+     * （cutAbs 80、积分 30 秒），正好对上"打游戏时一直在动"这种情况。拿到的是一张
+     * **多帧拼图**，模型能看到"刚才发生了这几件事"而不是一瞬间的定格。
+     *
+     * 拿不到才退回旧的高清单张。
+     *
+     * @returns {Promise<Array|null>} OpenAI content blocks（text + image_url）或 null
+     */
+    async _companionVisual(win) {
+        if (!window.electronAPI) return null;
+        const title = win && win.title ? win.title : '';
+        // ① 新流水线
+        if (this.visionClient?.available && this.visionClient.available()) {
+            try {
+                const sheet = await this.visionClient.grab({
+                    seconds: 20,
+                    minFrames: 1,
+                    quality: 'low',
+                    scene: false,
+                });
+                if (sheet && sheet.ok && sheet.dataUrl) {
+                    const block = this.visionClient.toContentBlock(sheet);
+                    if (block) return block;
+                }
+            } catch (e) {
+                console.log('[DEBUG:companion] vision grab failed:', e.message);
+            }
+        }
+        // ② 旧路：一张高清单帧
+        const shot = await this._companionScreenshot(win);
+        if (!shot) return null;
+        return [{ type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + shot } }];
+    }
+
+    /**
      * Grab one frame for the companion. Returns base64 JPEG or null.
      * Prefers the focused window so the remark is about the game itself.
      */
@@ -340,12 +470,10 @@ class DesktopPetSystem {
         const instruction = this.gameCompanion.buildGamePrompt(win);
         try {
             const content = [{ type: 'text', text: instruction }];
-            // 默认根据截屏了解用户在干什么
+            // 默认根据截屏了解用户在干什么（优先多帧拼图）
             if (this.gameCompanion.useScreenshots) {
-                const shot = await this._companionScreenshot(win);
-                if (shot) {
-                    content.push({ type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + shot } });
-                }
+                const visual = await this._companionVisual(win);
+                if (visual) content.push(...visual);
             }
             const response = await this.aiClient.callAPI([
                 { role: 'system', content: this.systemPrompt + '\n\n' + this.buildDynamicContext() },
@@ -504,8 +632,8 @@ class DesktopPetSystem {
         try {
             const content = [{ type: 'text', text: instruction }];
             if (this.gameCompanion.useScreenshots) {
-                const shot = await this._companionScreenshot(win);
-                if (shot) content.push({ type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + shot } });
+                const visual = await this._companionVisual(win);
+                if (visual) content.push(...visual);
             }
             const response = await this.aiClient.callAPI([
                 { role: 'system', content: this.systemPrompt + '\n\n' + this.buildDynamicContext() },
@@ -728,25 +856,74 @@ class DesktopPetSystem {
 
     // ========== Main Tick & Request ==========
 
+    /**
+     * 慢循环：多久"主动看一眼并说句话"。
+     *
+     * ## 和识屏流水线的关系（改造后的分工）
+     *
+     * 改造前这里是"到点就去截一张图、问一次 AI"，截图和说话绑死在一起。
+     * 现在画面由 `vision` 后台常驻采集、按画面变化量筛帧、攒成 sheet，
+     * 这里只负责**消费**：到点了看看队列里有没有**新的一张图**。
+     *
+     * - 有 → 问模型（`sendRequest`）
+     * - 没有 → **这一轮直接跳过，不发请求**
+     *
+     * ## 为什么"没有新图就不发请求"
+     *
+     * 旧逻辑是"拿不到新图就退回截一张旧图照样发"，等于同一块屏幕付两遍钱，
+     * 而且模型会对着十分钟没变的画面反复说相似的话（那时候靠防重复机制硬压）。
+     * 画面没变本来就是"没什么可说的"，诚实地不说话比硬凑一句好。
+     *
+     * 静止屏幕也不会永远沉默：`vision` 自己有兜底帧（`silentFloorSec` / `floorGapK`），
+     * 20 秒左右会产出"确实没变"的一张，那时这里照常说话。
+     */
     async tick() {
-        console.log('[DEBUG:tick] tick start, isActive=' + this.isActive + ', isRequesting=' + this.isRequesting + ', configured=' + (this.aiClient ? this.aiClient.isConfigured() : 'no-client'));
         if (!this.isActive || this.isRequesting || !this.aiClient.isConfigured()) return;
 
         try {
-            console.log('[DEBUG:tick] calling getActiveWindow...');
             const result = await window.electronAPI.getActiveWindow();
-            console.log('[DEBUG:tick] getActiveWindow result:', JSON.stringify(result));
-            if (!result?.success || !result.data?.owner?.name) {
-                console.log('[DEBUG:tick] getActiveWindow failed or no owner.name');
-                return;
-            }
-
+            if (!result?.success || !result.data?.owner?.name) return;
             if (this.shouldSkipApp(result.data.owner.name)) return;
 
             const windowTitle = result.data.title || result.data.owner.name;
             const bounds = result.data.bounds;
+
+            /**
+             * **先问画面，再决定要不要说话。**
+             *
+             * `peek()` 是零等待的：后台采集一直在按变化量筛帧，队列里通常
+             * 已经有货。只有它给了 null（这段时间画面没变化、攒不出新图）
+             * 才轮到"要不要等一会儿"的例外情况。
+             */
+            let sheet = null;
+            if (this.visionClient?.available && this.visionClient.available()) {
+                sheet = await this.visionClient.peek().catch(() => null);
+
+                if (!sheet) {
+                    // 两种例外值得等一等：
+                    //  ① 刚启动，队列还是空的，等一张让宠物能开口
+                    //  ② 游戏陪伴开着且正到开口的时机（它自己有自己的节奏）
+                    const companionDue = !!(this.gameCompanion?.enabled
+                        && this.gameCompanion.shouldComment
+                        && !this.isPlayingMessage);
+                    const firstRun = !this._spokeOnce;
+                    if (firstRun || companionDue) {
+                        const r = await this.visionClient
+                            .grab({ seconds: 6, minFrames: 2 })
+                            .catch(() => null);
+                        if (r && r.ok && r.dataUrl) sheet = r;
+                    }
+                }
+
+                if (!sheet) {
+                    // 没有新画面 → 不说话。这是刻意的省钱路径，不是失败。
+                    console.log('[DesktopPetSystem] tick skipped: no new frame yet');
+                    return;
+                }
+            }
+
             this.lastAppName = windowTitle;
-            await this.sendRequest(windowTitle, bounds);
+            await this.sendRequest(windowTitle, bounds, sheet);
         } catch (error) {
             console.error('[DesktopPetSystem] Tick error:', error);
         }
@@ -771,7 +948,22 @@ class DesktopPetSystem {
         if (!this.audioStateMachine && !forceTts) return null;
         // forceTts: live-danmaku replies must be voiced even if the user set the
         // audio mode to silent or default clips.
-        const mode = forceTts ? 'tts' : this.audioStateMachine.effectiveMode;
+        let mode = forceTts ? 'tts' : this.audioStateMachine.effectiveMode;
+
+        /**
+         * **最后一道自愈**：用户明明选了 tts，有效模式却是 silent —— 几乎一定是
+         * 启动时的竞态留下的错判（后端那时还没初始化完）。在这里复查一次，
+         * 让"某一次启动后突然没声音"这种事能自己恢复，而不是要用户重启或去翻日志。
+         *
+         * 只在"偏好是 tts 但降级成 silent"时出手，静音是用户的显式选择就不打扰。
+         */
+        if (!forceTts && mode === 'silent' && this.audioStateMachine.preferredMode === 'tts') {
+            const ok = await this._refreshTTSAvailability();
+            if (ok) {
+                mode = this.audioStateMachine.effectiveMode;
+                console.log('[DesktopPetSystem] TTS recovered on demand, audio mode:', mode);
+            }
+        }
 
         if (mode === 'tts' && window.electronAPI?.ttsSynthesize) {
             try {
@@ -1050,16 +1242,21 @@ class DesktopPetSystem {
         this.isPlayingMessage = false;
     }
 
-    async sendRequest(appName, bounds) {
+    /**
+     * 问模型并安排播放。
+     *
+     * @param {string} appName 当前活动窗口标题
+     * @param {object} bounds 窗口尺寸（可选）
+     * @param {object|null} preSheet tick 已经取到的识屏图（新的流水线路径）
+     */
+    async sendRequest(appName, bounds, preSheet = null) {
         if (this.isRequesting) return;
 
-        // 截图频率控制：如果设置了间隔且未到期，跳过截图
+        // 注：旧的 `screenshotInterval` 节流已移除。
+        // 它原本用来限制"多久截一次全屏"，而截图现在由识屏流水线按
+        // **画面变化量**决定（`vision.pace`），按秒数的节流已经没有意义 ——
+        // 留着只会和 pace 打架，让某些该说的话因为"没到截图时间"而被跳过。
         const now = Date.now();
-        const screenshotIntervalMs = this.screenshotInterval > 0
-            ? this.screenshotInterval * 1000
-            : 0;  // 0=每次检测都截图（原行为）
-        const shouldScreenshot = screenshotIntervalMs === 0 ||
-            (now - this.lastScreenshotTime) >= screenshotIntervalMs;
 
         this.isRequesting = true;
 
@@ -1115,11 +1312,6 @@ class DesktopPetSystem {
             }
 
             // Build fresh system prompt with dynamic context
-            // Enhancement side-effects (memory tracking)
-            let enhancerMemoryContext = '';
-            if (this.enhancer) {
-                enhancerMemoryContext = await this.enhancer.beforeRequest(appName, null);
-            }
             let metaInfo = '';
             if (this.emotionSystem) {
                 const nextEmotion = this.emotionSystem.nextEmotionBuffer;
@@ -1128,10 +1320,6 @@ class DesktopPetSystem {
                 }
             }
             metaInfo += idleInfo + petPosInfo + layoutSummary;
-            // 注入增强记忆（窗口使用习惯等）
-            if (enhancerMemoryContext) {
-                metaInfo += '\n' + enhancerMemoryContext;
-            }
             const dynamicContext = this.buildDynamicContext() + metaInfo;
             const currentSystemPrompt = this.promptBuilder.buildSystemPrompt(dynamicContext);
 
@@ -1139,47 +1327,31 @@ class DesktopPetSystem {
             const hitContext = this._buildHitContext();
             const textPrompt = this.promptBuilder.getAppDetectionPrompt(this._shortenTitle(appName, 50) + boundsInfo) + hitContext;
 
-            // Gather screenshots: HQ fresh capture + one older from mipmap
+            // Gather visual context.
+            //
+            // 画面由识屏流水线（see-now）供给：后台常驻采集、按变化量筛帧、
+            // 攒成多帧拼图。这里只做两件事：
+            //   ① 用 tick 传来/或队列里已有的那张 sheet；
+            //   ② **实在没有图就发文本请求** —— 内容聊天的价值不依赖截图，
+            //      "问一句今天怎么样"不该因为屏幕没变化就答不上来。
+            //
+            // 旧逻辑里"没有新图就退回截一张旧的全屏"已经删掉：
+            // 那等于同一块屏幕付两遍钱，模型还会对着没变的画面复读。
             const screenshots = [];
-            const maxScreenshots = 2;
-            if (shouldScreenshot) {
-                if (window.electronAPI?.getScreenCaptureHQ) {
-                    try {
-                        const result = await window.electronAPI.getScreenCaptureHQ(appName);
-                        if (result?.success && result.data) {
-                            screenshots.push({ base64: result.data, timestamp: Date.now(), source: 'fresh' });
-                            this.lastScreenshotTime = now;
-                        }
-                    } catch (e) { console.log('[DEBUG:ss] HQ exception:', e.message); }
-                }
-                if (!screenshots.length && window.electronAPI?.getScreenCapture) {
-                    try {
-                        const result = await window.electronAPI.getScreenCapture();
-                        if (result?.success && result.data) {
-                            screenshots.push({ base64: result.data, timestamp: Date.now(), source: 'fresh' });
-                            this.lastScreenshotTime = now;
-                        }
-                    } catch (e) { console.log('[DEBUG:ss] exception:', e.message); }
-                }
-            }
-            if (this.enhancer?.vlmExtractor) {
-                const older = this.enhancer.vlmExtractor.getScreenshotsForMainAI(1);
-                for (const entry of older) {
-                    if (screenshots.length > 0 && entry.base64 === screenshots[0].base64) continue;
-                    // 简单的 base64 头部分析：如果前 1000 字符差不多，大概率内容重复
-                    if (screenshots.length > 0) {
-                        const a = screenshots[0].base64.slice(0, 1000);
-                        const b = entry.base64.slice(0, 1000);
-                        let diff = 0;
-                        for (let i = 0; i < a.length && i < b.length; i++) {
-                            if (a[i] !== b[i]) diff++;
-                        }
-                        // 前 1000 字符差异 < 5% → 视为重复，跳过
-                        if (diff / Math.min(a.length, b.length) < 0.05) continue;
+            let visionSheet = preSheet && preSheet.dataUrl ? preSheet : null;
+
+            if (!visionSheet && this.visionClient?.available && this.visionClient.available()) {
+                try {
+                    const got = await this.visionClient.peek();
+                    if (got && got.dataUrl) {
+                        visionSheet = got;
+                        this.lastScreenshotTime = now;
                     }
-                    if (screenshots.length < maxScreenshots) screenshots.push(entry);
+                } catch (e) {
+                    console.log('[DEBUG:vision] peek failed:', e.message);
                 }
             }
+            if (visionSheet) this.lastScreenshotTime = now;
 
             // 注入长期记忆（增强版）
             let memoryContext = '';
@@ -1198,43 +1370,27 @@ ${enhanced}
                 } catch (e) {}
             }
 
-            // Build messages: system + optional keyframe context + current user message
+            // Build messages: system + current user message
             const messages = [
                 { role: 'system', content: currentSystemPrompt + memoryContext }
             ];
 
-            // Keyframe context (mid-term visual memory)
-            if (this.enhancer?.vlmExtractor) {
-                const keyframes = await this.enhancer.vlmExtractor.getKeyframesForMainAI(2);
-                if (keyframes.length > 0) {
-                    const now = Date.now();
-                    const kfContent = [{ type: 'text', text: this._t('sys.kfLabel') }];
-                    for (let i = 0; i < keyframes.length; i++) {
-                        const kf = keyframes[i];
-                        const kfTime = new Date(kf.timestamp);
-                        const kfTimeStr = `${kfTime.getHours()}:${String(kfTime.getMinutes()).padStart(2, '0')}`;
-                        const ageSec = Math.round((now - kf.timestamp) / 1000);
-                        const ageStr = ageSec < 60 ? `${ageSec}s` : `${Math.round(ageSec / 60)}min`;
-                        const shortTitle = this._shortenTitle(kf.title, 25);
-                        kfContent.push(
-                            { type: 'text', text: this._t('sys.kfEntry').replace('{0}', i + 1).replace('{1}', kfTimeStr).replace('{2}', shortTitle).replace('{3}', ageStr) },
-                            { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + kf.base64 } }
-                        );
-                    }
-                    messages.push({ role: 'user', content: kfContent });
-                    messages.push({ role: 'assistant', content: this._t('sys.kfAck') });
-                }
-            }
-
             let response;
             const hasScreenshots = screenshots.length > 0;
+            const hasVisionSheet = !!visionSheet;
 
-            if (hasScreenshots) {
+            if (hasVisionSheet || hasScreenshots) {
                 const now = new Date();
                 const timeStr = `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
                 const userContent = [
                     { type: 'text', text: `[${timeStr}] ${textPrompt}${this._t('sys.screenshotAttached')}` }
                 ];
+                // 新流水线的拼图：**一张图 = 一段时间里的多个变化帧**。
+                // 附带每帧的时刻，模型才能说"刚才/这一会儿"而不是笼统的"现在"。
+                if (hasVisionSheet) {
+                    const block = this.visionClient.toContentBlock(visionSheet);
+                    if (block) userContent.push(...block);
+                }
                 for (const shot of screenshots) {
                     userContent.push({
                         type: 'image_url',
@@ -1256,6 +1412,8 @@ ${enhanced}
             }
 
             if (response) {
+                // 记下"已经开过口"——tick 靠它决定首次启动时要不要等一张图
+                this._spokeOnce = true;
                 // Store response in recent pool for anti-repetition analysis
                 const entry = { response, timestamp: Date.now(), analysis: null };
                 this.recentPool.push(entry);

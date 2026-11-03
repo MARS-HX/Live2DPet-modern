@@ -72,6 +72,14 @@
 - **自动定位 dsh**：自动找到 npm 全局的启动脚本，找不到则回退 PATH
 - 每次任务是独立的 headless 一次性会话（工作目录、超时、Profile 均可在设置里改）
 
+### 👁 识屏流水线
+
+- **不再定时截全屏**：每一帧先打一个「画面变化了多少」的分（64×36 网格 HSV 加权差，约 0.2ms）
+- **只留值得看的帧**：画面突然换了一张（切点）或一直在动、攒够了量（积分）才留
+- **多帧拼一张图**：4~8 帧拼进同一张，固定成本摊开 —— 静止屏幕几乎不花 token
+- **四档节奏**：calm / normal / dense / action（全屏游戏每帧都在动，需要单独一档）
+- **一眼可以验**：设置 → 屏幕感知 → 「测试采集」会真抓一帧并报出实测数字
+
 ### 🎮 游戏陪伴
 - **看画面说话**：触发时抓一张**屏幕截图**喂给模型，评论贴着画面里真实发生的事（默认开启）
 - **免提语音输入**：陪伴期间**默认打开语音输入**，打游戏腾不出手就直接说话，宠物带截图回答
@@ -229,8 +237,16 @@ Live2DPet-modern/
 ├── src/
 │   ├── core/                  # 核心逻辑
 │   │   ├── ai-chat.js         # AI 聊天客户端
-│   │   ├── conversation-store.js  # 对话记忆（双模式独立）
-│   │   ├── desktop-pet-system.js  # 桌面宠物主控
+│   │   ├── vision/            # 识屏流水线（移植自 dsh-see-now，Apache-2.0）
+│   │   │   ├── cuts.js        #   64×36 网格 HSV 变化分
+│   │   │   ├── tiers.js       #   出帧密度 → 格子档位
+│   │   │   ├── pack.js        #   DP 装箱
+│   │   │   ├── sheet.js       #   拼图 + 点阵编号
+│   │   │   ├── png.js         #   纯 JS PNG 编码
+│   │   │   ├── pipeline.js    #   帧 → 筛选 → 出图
+│   │   │   └── capture.js     #   ffmpeg 采集
+│   │   ├── screen-observer.js # 识屏会话管理（start/watch/peek/节奏）
+│   │   ├── conversation-store.js  # 对话记忆（双模式独立）│   │   ├── desktop-pet-system.js  # 桌面宠物主控
 │   │   ├── game-companion.js      # 游戏陪伴（游戏识别 / 开口节奏 / 提示词）
 │   │   ├── live-companion.js      # 直播间弹幕回应策略（过滤 / 限流 / 提示词）
 │   │   ├── tts-service.js         # TTS 语音合成（多后端）
@@ -250,6 +266,99 @@ Live2DPet-modern/
 ---
 
 ## 📋 更新日志
+
+### v1.7.2 — 回复频率适配识屏流水线
+
+识屏流水线上线后，旧的两个"按秒数"的控制已经不适用了，这一版把它们拆清楚。
+
+**问题**：`检测间隔`（10s）和 `截图间隔`（60s）都是给"定时截全屏"设计的。
+新的流水线按**画面变化量**决定留不留帧（`vision.pace`：calm 30s / normal 15s /
+dense 8s / action 20s），两个秒数节流和它打架 —— 该说的话会因为"没到截图时间"被跳过，
+不该说的话又会对着没变的画面反复说。
+
+**改动**：
+
+| 项 | 之前 | 现在 |
+|---|---|---|
+| 设置项名称 | Detection Settings / 检测设置 | **Reply Frequency / 回复频率** |
+| `interval` 语义 | 多久截一张图并检测 | **多久允许看一次**（不是强制定时器） |
+| `screenshotInterval` | 截图节流 | **已移除**（画面节奏交给 `vision.pace`） |
+| 没有新画面时 | 退回截一张旧图照样发 | **不发请求，安静** |
+
+**核心行为**：`tick()` 先 `peek()` 队列里有没有**新的一张图**：
+
+- 有 → 问模型（带图）
+- 没有 → 跳过，不花 token
+
+两个例外仍会等图：**首次启动**（让宠物能开口打招呼）、**游戏陪伴到点时**。
+静止屏幕也不会永远沉默 —— 流水线自己有兜底帧，20 秒左右会产出"确实没变"的一张。
+
+**设置界面**会实时算出"回复间隔 vs 唤识间隔"的关系并给出提示：
+间隔小于唤醒间隔时会警告"多数检查会空转"。
+
+**测试**：新增 `tests/test-tick-gating.js`（7 个），钉住上面四条决策路径。
+全量 **508 通过 / 0 失败**。
+
+### v1.7.1 — 移除旧的增强层（enhance/*）
+
+see-now 识屏流水线上线后，旧的「增强层」已经没有任何 UI 入口，成为纯死代码。
+这一版把它整体删掉，不再两套"看屏幕"的实现并存。
+
+**删除的内容**（8 个模块 + 1 个测试文件，约 60KB / 2300 行）：
+
+| 文件 | 原来做什么 |
+|---|---|
+| `enhance/enhancement-orchestrator.js` | 增强层总控（v2.0 起文本流水线已停用） |
+| `enhance/vlm-extractor.js` | 分层 mipmap 截图 + 视觉 LLM 情境提取 |
+| `enhance/memory-tracker.js` | 窗口焦点计时 → 长期记忆 |
+| `enhance/knowledge-acquisition.js` | 自动搜索并积累主题知识 |
+| `enhance/knowledge-store.js` | LLM 整理知识 |
+| `enhance/search-service.js` | 网络搜索（DuckDuckGo / 自定义 API） |
+| `enhance/context-pool.js` | 短期/长期记忆池 + 轻量 RAG |
+| `enhance/enhance-utils.js` | 共享工具函数 |
+| `tests/test-enhance.js` | 对应测试 |
+
+**保留的内容**（这些和"看屏幕"无关，仍在用）：
+
+- `enhance-data.json` 的读写通道 —— `conversation-store.js` 用它保存对话历史、
+  阶段总结、话题与偏好。**磁盘格式与 IPC 通道名都没改**，用户的长期记忆不会丢。
+- `enhance.tokens.*` 的 i18n 键 —— 「响应长度」卡片仍在用。
+- `config.json` 里 `enhance.search.customApiKey` 的解密逻辑 —— 老配置里可能还存着
+  这一项的密文，留着才能正确读出来而不是把 Base64 当明文显示。
+- `web-search` IPC 通道已移除（搜索服务是它唯一的调用方）。
+
+**验证**：全量测试 501 通过 / 0 失败；主进程 100 个 IPC 通道装配正常；
+设置页零控制台错误；真实应用启动日志中不再出现任何 `[Enhance:*]` 输出。
+
+### v1.7.0 — 识屏重写：按画面变化量筛帧，多帧拼一张图
+
+把原本「定时截一张全屏喂模型」的截图逻辑，换成
+[dsh-see-now](https://github.com/SAOS-3624/dsh-see-now)（Apache-2.0）的流水线。
+
+**为什么换**：旧做法的两个死结 —— 截得勤就是 30 张重复图烧穿 token，
+截得慢就丢掉中间发生的一切，模型只会说"看起来你在用电脑"。
+
+**新做法**：
+
+| 阶段 | 做什么 |
+|---|---|
+| 采集 | 一根 ffmpeg rawvideo 管道，12fps → 800×450（Windows 走 ddagrab，挡不住就自动退 gdigrab） |
+| 打分 | 每帧算一个 0–255 变化分（64×36 网格、HSV 三通道加权差，约 0.2ms/帧） |
+| 筛选 | **切点**（跳得又高又孤立）或**积分**（一直在动、攒够 144 分）才留；静止画面另有 20 秒兜底 |
+| 档位 | 按当前出帧密度决定格子大小（1..8 档，边长 1/k） |
+| 装箱 | DP 求占用率最高的排布，多帧拼进**同一张** PNG |
+| 交付 | 一张图 + 每帧时刻，作为一个 `image_url` 块交给模型 |
+
+**实测（Windows / gdigrab / 12fps）**：首帧 408ms，解码 11.5fps，静止屏幕 8 秒只出 1 张；
+6 段纯色每段 2 秒的硬切素材，**5/5 个切点全部命中**（变化分峰值 70.67）。
+
+**新增**：设置 → 屏幕感知（清晰度 / 四档节奏 / 逐场景 / 一键测试采集）、
+`vision.*` 配置块、`npm run verify:vision` 真机冒烟、`tests/test-vision.js`（70 个测试）。
+
+**移植改动**：ESM → CommonJS；DSH 的悬浮窗与聊天插话层剥掉；
+`watch` 由阻塞式工具调用改成 Promise；新增 ffmpeg 路径解析（打包后 GUI 进程拿不到 PATH）。
+算法参数**一个没改**（`cutAbs=12`、`REF_SCORE=4`、`binCost=1000` 等均为上游实测标定值）。
+
 
 ### v1.6.7 — 清理无主的 STT 残留
 - **修复 `No handler registered for 'stt:initialize'`**：早先移除云端 STT 时留下了悬空引用
@@ -355,6 +464,10 @@ Live2DPet-modern/
 ## 🙏 致谢
 
 - 原始项目：[x380kkm/Live2DPet](https://github.com/x380kkm/Live2DPet) —— 本项目的基础
+- **[SAOS-3624/dsh-see-now](https://github.com/SAOS-3624/dsh-see-now)** —— 识屏流水线的来源。
+  `src/core/vision/` 是它的移植（Apache-2.0）：按变化量给帧打分、切点与积分两条判据、
+  档位系统、DP 装箱、纯 JS PNG 编码，全部出自该项目。详见
+  [`src/core/vision/README.md`](src/core/vision/README.md) 与 `THIRD-PARTY-NOTICES`。
 - **[xfgryujk/blivedm](https://github.com/xfgryujk/blivedm)** —— 直播间弹幕客户端的设计参照。本项目的 WebSocket 实现借鉴了它的握手方式：WBI 签名与失效重签、auth 包内携带 `buvid`、弹幕主机列表轮换与定时重新初始化、接口失败时降级到默认服务器、以及可选的 SESSDATA 登录。感谢作者把协议细节整理得这么清楚。
 - [xfgryujk/blivechat](https://github.com/xfgryujk/blivechat) —— 同作者的直播弹幕应用，弹幕展示思路的参考
 - [B站直播开放平台协议文档](https://open-live.bilibili.com/document/657d8e34-f926-a133-16c0-300c1afc6e6b) —— 弹幕协议说明

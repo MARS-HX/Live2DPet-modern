@@ -39,6 +39,7 @@ const { registerBilibiliIPC } = require('./src/main/bilibili-ipc');
 const { registerObsIPC } = require('./src/main/obs-ipc');
 const { registerObsBrowserSource } = require('./src/main/obs-browser-ipc');
 const { registerAsrIPC } = require('./src/main/asr-ipc');
+const { registerVisionIPC } = require('./src/main/vision-ipc');
 const { createPathUtils } = require('./src/utils/path-utils');
 const { TTSService } = require('./src/core/tts-service');
 
@@ -62,7 +63,9 @@ registerUtilityIPC(ctx, ipcMain, { configManager, mt, Menu, shell, app, createSe
 registerCharacterHandlers(ctx, ipcMain, { fs, path, crypto, app, dialog, configManager });
 registerEmotionIPC(ctx, ipcMain);
 registerTTSIPC(ctx, ipcMain, { configManager, fs, path, app, mt });
-registerEnhanceIPC(ctx, ipcMain, { app, fs, https, http });
+// ========== 记忆数据持久化（长期记忆 / 阶段总结 / 偏好） ==========
+// 只负责读写 enhance-data.json；原先的网络搜索随增强层一起移除了。
+registerEnhanceIPC(ctx, ipcMain, { app, fs });
 registerDefaultAudioIPC(ctx, ipcMain, { app, fs, path, configManager });
 registerModelImport(ctx, ipcMain, { app, fs, path, dialog, mt, configManager, BrowserWindow });
 
@@ -79,6 +82,10 @@ registerObsIPC(ctx, ipcMain, { configManager, app });
 
 // ========== 离线语音识别（原生 libvosk + koffi） ==========
 registerAsrIPC(ctx, ipcMain, { app, configManager });
+
+// ========== 识屏流水线（ffmpeg 采集 + 变化分筛选 + 多帧拼图） ==========
+// 替换原先"定时截一张全屏"的做法：静止屏幕几乎不出图，画面变化才留帧。
+registerVisionIPC(ctx, ipcMain, { app, configManager });
 
 // ========== 麦克风权限（保留，但 STT 未使用） ==========
 ipcMain.handle('REQUEST_MICROPHONE_ACCESS', async () => {

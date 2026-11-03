@@ -8,6 +8,12 @@ const path = require('path');
 const { encrypt, decrypt } = require('./crypto-utils');
 
 const CURRENT_CONFIG_VERSION = 1;
+// 需要加解密落盘的字段。
+//
+// 注意 `enhance.search.customApiKey` 是**历史字段**：增强层已删除，
+// 但老用户的 config.json 里可能还留着这一项的密文。留着它在列表里、
+// 并保留下面对应的加解密代码，是为了让旧配置能正常读出来 ——
+// 直接不管的话，界面上会把 Base64 密文当成 API Key 显示。
 const ENCRYPTED_FIELDS = ['apiKey', 'translation.apiKey', 'enhance.search.customApiKey', 'bilibili.cookie'];
 
 function getDefaultModelConfig() {
@@ -46,14 +52,9 @@ function getDefaultConfig() {
         model: getDefaultModelConfig(),
         bubble: { frameImagePath: null },
         appIcon: null,
-        enhance: {
-            enabled: false,
-            memory: { enabled: true, retentionDays: 30 },
-            search: { enabled: false, provider: 'custom', customUrl: '', customApiKey: '', maxFrequencyMs: 30000, minFocusSeconds: 10 },
-            knowledge: { enabled: false, minIntervalMs: 60000, maxIntervalMs: 3600000 },
-            vlm: { enabled: false, baseIntervalMs: 15000, maxIntervalMs: 60000, minFocusSeconds: 10 },
-            knowledgeAcq: { enabled: false, minFocusSeconds: 60, termCooldownMs: 3600000, maxTermsPerTopic: 15, maxSearchesPerRequest: 2, retentionDays: 30 }
-        },
+        // 注：原先的 `enhance` 配置块（memory / search / knowledge / vlm / knowledgeAcq）
+        // 已随增强层一起移除。画面相关的职责由 `vision` 接管；
+        // 长期记忆改由 `enhance-data.json` 承载（见 src/main/enhance-ipc.js）。
         // DeepSeek Harness bridge: drive `dsh` from the pet.
         dsh: getDefaultDshConfig(),
         // Game companion: let the pet watch and accompany gameplay.
@@ -61,7 +62,34 @@ function getDefaultConfig() {
         // Bilibili live danmaku: let the pet react to a live room's chat.
         bilibili: getDefaultBilibiliConfig(),
         // OBS compatibility mode: makes the pet window readable by OBS.
-        obs: getDefaultObsConfig()
+        obs: getDefaultObsConfig(),
+        // 识屏流水线：按画面变化量筛帧，多帧拼进一张图交模型。
+        vision: getDefaultVisionConfig()
+    };
+}
+
+function getDefaultVisionConfig() {
+    return {
+        // 关掉就退回旧的"定时截一张全屏"行为
+        enabled: true,
+        // 清晰度：low(800×450) / standard(1066×600) / high(1280×720) / ultra(1600×900)
+        quality: 'low',
+        // 节奏：calm / normal / dense / action —— 只改"多久算变了"和"多久看一次"
+        pace: 'normal',
+        // 逐场景：一张图只装一个画面、铺满，每换一次画面单独出图
+        scene: false,
+        // 停采集后留多久宽限（期间再要看不用重新冷启动）
+        graceSec: 60,
+        // 少于这么多帧的图不交出去（省 token）
+        minFrames: 1,
+        // ffmpeg 路径；空 = 自动找
+        ffmpegPath: '',
+        // 采集帧率
+        fps: 12,
+        // 后台常驻唤醒间隔（秒）；null = 跟着 pace 走
+        wakeIntervalSec: null,
+        // 主动搭话时是否带一句"这段时间发生了什么"
+        speakPreview: true
     };
 }
 
@@ -188,15 +216,7 @@ function createConfigManager(app, options = {}) {
                 companion: { ...defaults.companion, ...(raw.companion || {}) },
                 bilibili: { ...defaults.bilibili, ...(raw.bilibili || {}) },
                 obs: { ...defaults.obs, ...(raw.obs || {}) },
-                enhance: {
-                    ...defaults.enhance,
-                    ...(raw.enhance || {}),
-                    memory: { ...defaults.enhance.memory, ...((raw.enhance || {}).memory || {}) },
-                    search: { ...defaults.enhance.search, ...((raw.enhance || {}).search || {}) },
-                    knowledge: { ...defaults.enhance.knowledge, ...((raw.enhance || {}).knowledge || {}) },
-                    vlm: { ...defaults.enhance.vlm, ...((raw.enhance || {}).vlm || {}) },
-                    knowledgeAcq: { ...defaults.enhance.knowledgeAcq, ...((raw.enhance || {}).knowledgeAcq || {}) }
-                }
+                vision: { ...defaults.vision, ...(raw.vision || {}) }
             };
             if (process.env.LIVE2DPET_API_KEY) merged.apiKey = process.env.LIVE2DPET_API_KEY;
             if (process.env.LIVE2DPET_BASE_URL) merged.baseURL = process.env.LIVE2DPET_BASE_URL;
@@ -224,14 +244,7 @@ function createConfigManager(app, options = {}) {
             if (data.companion) merged.companion = { ...(existing.companion || {}), ...data.companion };
             if (data.bilibili) merged.bilibili = { ...(existing.bilibili || {}), ...data.bilibili };
             if (data.obs) merged.obs = { ...(existing.obs || {}), ...data.obs };
-            if (data.enhance) {
-                merged.enhance = { ...(existing.enhance || {}), ...data.enhance };
-                if (data.enhance.memory) merged.enhance.memory = { ...(existing.enhance?.memory || {}), ...data.enhance.memory };
-                if (data.enhance.search) merged.enhance.search = { ...(existing.enhance?.search || {}), ...data.enhance.search };
-                if (data.enhance.knowledge) merged.enhance.knowledge = { ...(existing.enhance?.knowledge || {}), ...data.enhance.knowledge };
-                if (data.enhance.vlm) merged.enhance.vlm = { ...(existing.enhance?.vlm || {}), ...data.enhance.vlm };
-                if (data.enhance.knowledgeAcq) merged.enhance.knowledgeAcq = { ...(existing.enhance?.knowledgeAcq || {}), ...data.enhance.knowledgeAcq };
-            }
+            if (data.vision) merged.vision = { ...(existing.vision || {}), ...data.vision };
             const toWrite = JSON.parse(JSON.stringify(merged));
             encryptFields(toWrite);
             await _writeFile(userConfigPath, JSON.stringify(toWrite, null, 2));
@@ -250,6 +263,7 @@ module.exports = {
     getDefaultCompanionConfig,
     getDefaultBilibiliConfig,
     getDefaultObsConfig,
+    getDefaultVisionConfig,
     migrateConfig,
     CURRENT_CONFIG_VERSION
 };
